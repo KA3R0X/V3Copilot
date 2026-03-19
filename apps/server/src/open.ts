@@ -8,7 +8,7 @@
  */
 import { spawn } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
-import { extname, join } from "node:path";
+import { extname, isAbsolute, join } from "node:path";
 
 import { EDITORS, type EditorId } from "@t3tools/contracts";
 import { ServiceMap, Schema, Effect, Layer } from "effect";
@@ -25,6 +25,7 @@ export class OpenError extends Schema.TaggedErrorClass<OpenError>()("OpenError",
 export interface OpenInEditorInput {
   readonly cwd: string;
   readonly editor: EditorId;
+  readonly executablePath?: string | undefined;
 }
 
 interface EditorLaunch {
@@ -207,6 +208,23 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
   input: OpenInEditorInput,
   platform: NodeJS.Platform = process.platform,
 ): Effect.fn.Return<EditorLaunch, OpenError> {
+  const explicitExecutablePath = input.executablePath?.trim();
+  if (explicitExecutablePath && explicitExecutablePath.length > 0) {
+    if (!isAbsolute(explicitExecutablePath)) {
+      return yield* new OpenError({
+        message: `Executable path must be absolute: ${explicitExecutablePath}`,
+      });
+    }
+    if (!isCommandAvailable(explicitExecutablePath, { platform })) {
+      return yield* new OpenError({
+        message: `Editor executable path is not runnable: ${explicitExecutablePath}`,
+      });
+    }
+    return shouldUseGotoFlag(input.editor, input.cwd)
+      ? { command: explicitExecutablePath, args: ["--goto", input.cwd] }
+      : { command: explicitExecutablePath, args: [input.cwd] };
+  }
+
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
   if (!editorDef) {
     return yield* new OpenError({ message: `Unknown editor: ${input.editor}` });

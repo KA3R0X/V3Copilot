@@ -1,7 +1,6 @@
 import {
   type ApprovalRequestId,
   DEFAULT_MODEL_BY_PROVIDER,
-  EDITORS,
   type EditorId,
   type KeybindingCommand,
   type CodexReasoningEffort,
@@ -54,6 +53,7 @@ import { gitBranchesQueryOptions, gitCreateWorktreeMutationOptions } from "~/lib
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
 import { serverConfigQueryOptions, serverQueryKeys } from "~/lib/serverReactQuery";
 import { skillsListQueryOptions } from "~/lib/skillsReactQuery";
+import { OpenInPicker } from "./chat/OpenInPicker";
 
 import { isElectron } from "../env";
 import { parseDiffRouteSearch, stripDiffSearchParams } from "../diffRouteSearch";
@@ -125,11 +125,7 @@ import {
 } from "../lib/turnDiffTree";
 import BranchToolbar from "./BranchToolbar";
 import GitActionsControl from "./GitActionsControl";
-import {
-  isOpenFavoriteEditorShortcut,
-  resolveShortcutCommand,
-  shortcutLabelForCommand,
-} from "../keybindings";
+import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import ChatMarkdown from "./ChatMarkdown";
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
@@ -169,7 +165,6 @@ import { Button } from "./ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Input } from "./ui/input";
 import { Separator } from "./ui/separator";
-import { Group, GroupSeparator } from "./ui/group";
 import {
   Menu,
   MenuGroup,
@@ -181,21 +176,10 @@ import {
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
-  MenuShortcut,
   MenuTrigger,
 } from "./ui/menu";
-import {
-  ClaudeAI,
-  CursorIcon,
-  Gemini,
-  GitHubIcon,
-  Icon,
-  OpenAI,
-  OpenCodeIcon,
-  VisualStudioCode,
-  Zed,
-} from "./Icons";
-import { cn, isMacPlatform, isWindowsPlatform, randomUUID } from "~/lib/utils";
+import { ClaudeAI, CursorIcon, Gemini, GitHubIcon, Icon, OpenAI, OpenCodeIcon } from "./Icons";
+import { cn, randomUUID } from "~/lib/utils";
 import { Badge } from "./ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Command, CommandItem, CommandList } from "./ui/command";
@@ -305,7 +289,6 @@ function formatWorkingTimer(startIso: string, endIso: string): string | null {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
-const LAST_EDITOR_KEY = "t3code:last-editor";
 const MAX_VISIBLE_WORK_LOG_ENTRIES = 6;
 const ALWAYS_UNVIRTUALIZED_TAIL_ROWS = 8;
 const ATTACHMENT_PREVIEW_HANDOFF_TTL_MS = 5000;
@@ -4467,7 +4450,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
               data-chat-composer-form="true"
             >
               <div
-                className={`group relative overflow-visible rounded-[20px] border bg-card transition-colors duration-200 ${
+                className={`group relative min-w-0 overflow-visible rounded-[20px] border bg-card transition-colors duration-200 ${
                   isDragOverComposer
                     ? interactionMode === "plan"
                       ? "border-ring-plan/70 bg-accent/30"
@@ -4489,14 +4472,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
                   </span>
                 )}
                 {activePendingApproval ? (
-                  <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+                  <div className="min-w-0 overflow-hidden rounded-t-[19px] border-b border-border/65 bg-muted/20">
                     <ComposerPendingApprovalPanel
                       approval={activePendingApproval}
                       pendingCount={pendingApprovals.length}
                     />
                   </div>
                 ) : pendingUserInputs.length > 0 ? (
-                  <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+                  <div className="min-w-0 overflow-hidden rounded-t-[19px] border-b border-border/65 bg-muted/20">
                     <ComposerPendingUserInputPanel
                       pendingUserInputs={pendingUserInputs}
                       respondingRequestIds={respondingRequestIds}
@@ -4507,7 +4490,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                     />
                   </div>
                 ) : showPlanFollowUpPrompt && activeProposedPlan ? (
-                  <div className="rounded-t-[19px] border-b border-border/65 bg-muted/20">
+                  <div className="min-w-0 overflow-hidden rounded-t-[19px] border-b border-border/65 bg-muted/20">
                     <ComposerPlanFollowUpBanner
                       key={activeProposedPlan.id}
                       planTitle={proposedPlanTitle(activeProposedPlan.planMarkdown) ?? null}
@@ -4518,7 +4501,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
                 {/* Textarea area */}
                 <div
                   className={cn(
-                    "relative px-3 pb-2 sm:px-4",
+                    "relative min-w-0 px-3 pb-2 sm:px-4",
                     hasComposerHeader ? "pt-2.5 sm:pt-3" : "pt-3.5 sm:pt-4",
                   )}
                 >
@@ -4644,7 +4627,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
 
                 {/* Bottom toolbar */}
                 {activePendingApproval ? (
-                  <div className="flex items-center justify-end gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
+                  <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 px-2.5 pb-2.5 sm:px-3 sm:pb-3">
                     <ComposerPendingApprovalActions
                       requestId={activePendingApproval.requestId}
                       isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
@@ -5305,10 +5288,12 @@ const ComposerPendingApprovalPanel = memo(function ComposerPendingApprovalPanel(
         : "File-change approval requested";
 
   return (
-    <div className="px-4 py-3.5 sm:px-5 sm:py-4">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="min-w-0 px-4 py-3.5 sm:px-5 sm:py-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <span className="uppercase text-sm tracking-[0.2em]">PENDING APPROVAL</span>
-        <span className="text-sm font-medium">{approvalSummary}</span>
+        <span className="min-w-0 break-all text-sm font-medium whitespace-normal">
+          {approvalSummary}
+        </span>
         {pendingCount > 1 ? (
           <span className="text-xs text-muted-foreground">1/{pendingCount}</span>
         ) : null}
@@ -5336,6 +5321,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
       <Button
         size="sm"
         variant="ghost"
+        className="h-auto max-w-full whitespace-normal break-words py-1.5 text-center leading-tight"
         disabled={isResponding}
         onClick={() => void onRespondToApproval(requestId, "cancel")}
       >
@@ -5344,6 +5330,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
       <Button
         size="sm"
         variant="destructive-outline"
+        className="h-auto max-w-full whitespace-normal break-words py-1.5 text-center leading-tight"
         disabled={isResponding}
         onClick={() => void onRespondToApproval(requestId, "decline")}
       >
@@ -5352,6 +5339,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
       <Button
         size="sm"
         variant="outline"
+        className="h-auto max-w-full whitespace-normal break-words py-1.5 text-center leading-tight"
         disabled={isResponding}
         onClick={() => void onRespondToApproval(requestId, "acceptForSession")}
       >
@@ -5360,6 +5348,7 @@ const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActi
       <Button
         size="sm"
         variant="default"
+        className="h-auto max-w-full whitespace-normal break-words py-1.5 text-center leading-tight"
         disabled={isResponding}
         onClick={() => void onRespondToApproval(requestId, "accept")}
       >
@@ -5481,20 +5470,22 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   }
 
   return (
-    <div className="px-4 py-3 sm:px-5">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
+    <div className="min-w-0 px-4 py-3 sm:px-5">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {prompt.questions.length > 1 ? (
             <span className="flex h-5 items-center rounded-md bg-muted/60 px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground/60">
               {questionIndex + 1}/{prompt.questions.length}
             </span>
           ) : null}
-          <span className="text-[11px] font-semibold tracking-widest text-muted-foreground/50 uppercase">
+          <span className="min-w-0 break-all text-[11px] font-semibold tracking-widest text-muted-foreground/50 uppercase whitespace-normal">
             {activeQuestion.header}
           </span>
         </div>
       </div>
-      <p className="mt-1.5 text-sm text-foreground/90">{activeQuestion.question}</p>
+      <p className="mt-1.5 break-all text-sm text-foreground/90 whitespace-normal">
+        {activeQuestion.question}
+      </p>
       <div className="mt-3 space-y-1">
         {activeQuestion.options.map((option, index) => {
           const isSelected = progress.selectedOptionLabel === option.label;
@@ -5526,9 +5517,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 </kbd>
               ) : null}
               <div className="min-w-0 flex-1">
-                <span className="text-sm font-medium">{option.label}</span>
+                <span className="break-all text-sm font-medium whitespace-normal">
+                  {option.label}
+                </span>
                 {option.description && option.description !== option.label ? (
-                  <span className="ml-2 text-xs text-muted-foreground/50">
+                  <span className="ml-2 break-all text-xs text-muted-foreground/50 whitespace-normal">
                     {option.description}
                   </span>
                 ) : null}
@@ -5548,11 +5541,13 @@ const ComposerPlanFollowUpBanner = memo(function ComposerPlanFollowUpBanner({
   planTitle: string | null;
 }) {
   return (
-    <div className="px-4 py-3.5 sm:px-5 sm:py-4">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="min-w-0 px-4 py-3.5 sm:px-5 sm:py-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <span className="uppercase text-sm tracking-[0.2em]">Plan ready</span>
         {planTitle ? (
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">{planTitle}</span>
+          <span className="min-w-0 flex-1 break-all text-sm font-medium whitespace-normal">
+            {planTitle}
+          </span>
         ) : null}
       </div>
       {/* <div className="mt-2 text-xs text-muted-foreground">
@@ -7047,125 +7042,5 @@ const ModelTraitsPicker = memo(function ModelTraitsPicker(props: {
         ) : null}
       </MenuPopup>
     </Menu>
-  );
-});
-
-const OpenInPicker = memo(function OpenInPicker({
-  keybindings,
-  availableEditors,
-  openInCwd,
-}: {
-  keybindings: ResolvedKeybindingsConfig;
-  availableEditors: ReadonlyArray<EditorId>;
-  openInCwd: string | null;
-}) {
-  const [lastEditor, setLastEditor] = useState<EditorId>(() => {
-    const stored = localStorage.getItem(LAST_EDITOR_KEY);
-    return EDITORS.some((e) => e.id === stored) ? (stored as EditorId) : EDITORS[0].id;
-  });
-
-  const allOptions = useMemo<Array<{ label: string; Icon: Icon; value: EditorId }>>(
-    () => [
-      {
-        label: "Cursor",
-        Icon: CursorIcon,
-        value: "cursor",
-      },
-      {
-        label: "VS Code",
-        Icon: VisualStudioCode,
-        value: "vscode",
-      },
-      {
-        label: "Zed",
-        Icon: Zed,
-        value: "zed",
-      },
-      {
-        label: isMacPlatform(navigator.platform)
-          ? "Finder"
-          : isWindowsPlatform(navigator.platform)
-            ? "Explorer"
-            : "Files",
-        Icon: FolderClosedIcon,
-        value: "file-manager",
-      },
-    ],
-    [],
-  );
-  const options = useMemo(
-    () => allOptions.filter((option) => availableEditors.includes(option.value)),
-    [allOptions, availableEditors],
-  );
-
-  const effectiveEditor = options.some((option) => option.value === lastEditor)
-    ? lastEditor
-    : (options[0]?.value ?? null);
-  const primaryOption = options.find(({ value }) => value === effectiveEditor) ?? null;
-
-  const openInEditor = useCallback(
-    (editorId: EditorId | null) => {
-      const api = readNativeApi();
-      if (!api || !openInCwd) return;
-      const editor = editorId ?? effectiveEditor;
-      if (!editor) return;
-      void api.shell.openInEditor(openInCwd, editor);
-      localStorage.setItem(LAST_EDITOR_KEY, editor);
-      setLastEditor(editor);
-    },
-    [effectiveEditor, openInCwd, setLastEditor],
-  );
-
-  const openFavoriteEditorShortcutLabel = useMemo(
-    () => shortcutLabelForCommand(keybindings, "editor.openFavorite"),
-    [keybindings],
-  );
-
-  useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      const api = readNativeApi();
-      if (!isOpenFavoriteEditorShortcut(e, keybindings)) return;
-      if (!api || !openInCwd) return;
-      if (!effectiveEditor) return;
-
-      e.preventDefault();
-      void api.shell.openInEditor(openInCwd, effectiveEditor);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [effectiveEditor, keybindings, openInCwd]);
-
-  return (
-    <Group aria-label="Subscription actions">
-      <Button
-        size="xs"
-        variant="outline"
-        disabled={!effectiveEditor || !openInCwd}
-        onClick={() => openInEditor(effectiveEditor)}
-      >
-        {primaryOption?.Icon && <primaryOption.Icon aria-hidden="true" className="size-3.5" />}
-        <span className="sr-only @sm/header-actions:not-sr-only @sm/header-actions:ml-0.5">
-          Open
-        </span>
-      </Button>
-      <GroupSeparator className="hidden @sm/header-actions:block" />
-      <Menu>
-        <MenuTrigger render={<Button aria-label="Copy options" size="icon-xs" variant="outline" />}>
-          <ChevronDownIcon aria-hidden="true" className="size-4" />
-        </MenuTrigger>
-        <MenuPopup align="end">
-          {options.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
-          {options.map(({ label, Icon, value }) => (
-            <MenuItem key={value} onClick={() => openInEditor(value)}>
-              <Icon aria-hidden="true" className="text-muted-foreground" />
-              {label}
-              {value === effectiveEditor && openFavoriteEditorShortcutLabel && (
-                <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
-              )}
-            </MenuItem>
-          ))}
-        </MenuPopup>
-      </Menu>
-    </Group>
   );
 });

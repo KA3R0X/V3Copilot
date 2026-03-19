@@ -15,5 +15,6 @@ export type EditorId = typeof EditorId.Type;
 export const OpenInEditorInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   editor: EditorId,
+  executablePath: Schema.optional(Schema.String.check(Schema.isMaxLength(4096))),
 });
 export type OpenInEditorInput = typeof OpenInEditorInput.Type;

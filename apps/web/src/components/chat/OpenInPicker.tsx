@@ -1,12 +1,13 @@
 import { EditorId, type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { memo, useCallback, useEffect, useMemo } from "react";
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from "../../keybindings";
-import { usePreferredEditor } from "../../editorPreferences";
+import { resolveExecutablePathForEditor, usePreferredEditor } from "../../editorPreferences";
 import { ChevronDownIcon, FolderClosedIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Group, GroupSeparator } from "../ui/group";
 import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from "../ui/menu";
 import { AntigravityIcon, CursorIcon, Icon, VisualStudioCode, Zed } from "../Icons";
+import { toastManager } from "../ui/toast";
 import { isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
 
@@ -67,10 +68,17 @@ export const OpenInPicker = memo(function OpenInPicker({
       if (!api || !openInCwd) return;
       const editor = editorId ?? preferredEditor;
       if (!editor) return;
-      void api.shell.openInEditor(openInCwd, editor);
+      const executablePath = resolveExecutablePathForEditor(editor, availableEditors);
+      void api.shell.openInEditor(openInCwd, editor, executablePath).catch((error) => {
+        toastManager.add({
+          type: "error",
+          title: "Unable to open editor",
+          description: error instanceof Error ? error.message : "Unknown editor launch error.",
+        });
+      });
       setPreferredEditor(editor);
     },
-    [preferredEditor, openInCwd, setPreferredEditor],
+    [availableEditors, preferredEditor, openInCwd, setPreferredEditor],
   );
 
   const openFavoriteEditorShortcutLabel = useMemo(
@@ -86,11 +94,18 @@ export const OpenInPicker = memo(function OpenInPicker({
       if (!preferredEditor) return;
 
       e.preventDefault();
-      void api.shell.openInEditor(openInCwd, preferredEditor);
+      const executablePath = resolveExecutablePathForEditor(preferredEditor, availableEditors);
+      void api.shell.openInEditor(openInCwd, preferredEditor, executablePath).catch((error) => {
+        toastManager.add({
+          type: "error",
+          title: "Unable to open editor",
+          description: error instanceof Error ? error.message : "Unknown editor launch error.",
+        });
+      });
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [preferredEditor, keybindings, openInCwd]);
+  }, [availableEditors, preferredEditor, keybindings, openInCwd]);
 
   return (
     <Group aria-label="Subscription actions">

@@ -27,6 +27,7 @@ import { useStore } from "../store";
 import { useAppSettings } from "../appSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
+import { toastManager } from "./ui/toast";
 import { ToggleGroup, Toggle } from "./ui/toggle-group";
 
 type DiffRenderMode = "stacked" | "split";
@@ -306,10 +307,21 @@ export default function DiffPanel({ mode = "inline" }: DiffPanelProps) {
   const openDiffFileInEditor = useCallback(
     (filePath: string) => {
       const api = readNativeApi();
-      if (!api) return;
+      if (!api) {
+        toastManager.add({
+          type: "error",
+          title: "Editor opening is unavailable",
+          description: "Native API is not available in this environment.",
+        });
+        return;
+      }
       const targetPath = activeCwd ? resolvePathLinkTarget(filePath, activeCwd) : filePath;
       void openInPreferredEditor(api, targetPath).catch((error) => {
-        console.warn("Failed to open diff file in editor.", error);
+        toastManager.add({
+          type: "error",
+          title: "Unable to open file",
+          description: error instanceof Error ? error.message : "Unknown editor launch error.",
+        });
       });
     },
     [activeCwd],

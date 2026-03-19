@@ -13,7 +13,7 @@ import { Throttler } from "@tanstack/react-pacer";
 import { APP_DISPLAY_NAME } from "../branding";
 import { Button } from "../components/ui/button";
 import { AnchoredToastProvider, ToastProvider, toastManager } from "../components/ui/toast";
-import { resolveAndPersistPreferredEditor } from "../editorPreferences";
+import { resolveAndPersistPreferredEditorLaunch } from "../editorPreferences";
 import { serverConfigQueryOptions, serverQueryKeys } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
 import { clearPromotedDraftThreads, useComposerDraftStore } from "../composerDraftStore";
@@ -282,11 +282,17 @@ function EventRouter() {
             void queryClient
               .ensureQueryData(serverConfigQueryOptions())
               .then((config) => {
-                const editor = resolveAndPersistPreferredEditor(config.availableEditors);
+                const { editor, executablePath } = resolveAndPersistPreferredEditorLaunch(
+                  config.availableEditors,
+                );
                 if (!editor) {
                   throw new Error("No available editors found.");
                 }
-                return api.shell.openInEditor(config.keybindingsConfigPath, editor);
+                return api.shell.openInEditor(
+                  config.keybindingsConfigPath,
+                  editor,
+                  executablePath ?? undefined,
+                );
               })
               .catch((error) => {
                 toastManager.add({

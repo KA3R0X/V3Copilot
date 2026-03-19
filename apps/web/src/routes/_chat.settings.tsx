@@ -1,10 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import { type ProviderKind, DEFAULT_GIT_TEXT_GENERATION_MODEL } from "@t3tools/contracts";
+import {
+  DEFAULT_GIT_TEXT_GENERATION_MODEL,
+  EDITORS,
+  type EditorId,
+  type ProviderKind,
+} from "@t3tools/contracts";
 import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
-import { resolveAndPersistPreferredEditor } from "../editorPreferences";
+import { resolveAndPersistPreferredEditorLaunch } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
@@ -61,6 +66,16 @@ const TIMESTAMP_FORMAT_LABELS = {
   "12-hour": "12-hour",
   "24-hour": "24-hour",
 } as const;
+const PREFERRED_EDITOR_DEFAULT_VALUE = "__default__";
+const EMPTY_AVAILABLE_EDITORS: ReadonlyArray<EditorId> = [];
+
+function isEditorId(value: string): value is EditorId {
+  return EDITORS.some((editor) => editor.id === value);
+}
+
+function labelForEditor(editorId: EditorId): string {
+  return EDITORS.find((editor) => editor.id === editorId)?.label ?? editorId;
+}
 
 function getCustomModelsForProvider(
   settings: ReturnType<typeof useAppSettings>["settings"],
@@ -111,7 +126,19 @@ function SettingsRouteView() {
   const codexBinaryPath = settings.codexBinaryPath;
   const codexHomePath = settings.codexHomePath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
-  const availableEditors = serverConfigQuery.data?.availableEditors;
+  const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
+  const availableEditorIds = new Set(availableEditors);
+  const preferredEditorOptions = EDITORS.filter((editor) => availableEditorIds.has(editor.id));
+  const preferredEditorSelectValue: EditorId | typeof PREFERRED_EDITOR_DEFAULT_VALUE =
+    settings.preferredEditor !== null && availableEditorIds.has(settings.preferredEditor)
+      ? settings.preferredEditor
+      : PREFERRED_EDITOR_DEFAULT_VALUE;
+  const preferredEditorUnavailable =
+    settings.preferredEditor !== null && !availableEditorIds.has(settings.preferredEditor);
+  const preferredEditorPathPlaceholder =
+    typeof navigator !== "undefined" && navigator.platform.startsWith("Win")
+      ? "C:\\Tools\\Editor\\editor.exe"
+      : "/usr/local/bin/editor";
 
   const gitTextGenerationModelOptions = getAppModelOptions(
     "codex",
@@ -129,14 +156,14 @@ function SettingsRouteView() {
     setOpenKeybindingsError(null);
     setIsOpeningKeybindings(true);
     const api = ensureNativeApi();
-    const editor = resolveAndPersistPreferredEditor(availableEditors ?? []);
+    const { editor, executablePath } = resolveAndPersistPreferredEditorLaunch(availableEditors);
     if (!editor) {
       setOpenKeybindingsError("No available editors found.");
       setIsOpeningKeybindings(false);
       return;
     }
     void api.shell
-      .openInEditor(keybindingsConfigPath, editor)
+      .openInEditor(keybindingsConfigPath, editor, executablePath ?? undefined)
       .catch((error) => {
         setOpenKeybindingsError(
           error instanceof Error ? error.message : "Unable to open keybindings file.",
@@ -317,6 +344,110 @@ function SettingsRouteView() {
                     </Button>
                   </div>
                 ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Editors</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Choose the default editor used by Open actions and keyboard shortcuts.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex flex-col gap-4 rounded-lg border border-border bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">Preferred editor</p>
+                    <p className="text-xs text-muted-foreground">
+                      System default uses the first available editor from server config.
+                    </p>
+                  </div>
+                  <Select
+                    value={preferredEditorSelectValue}
+                    onValueChange={(value) => {
+                      if (value === null) return;
+                      if (value === PREFERRED_EDITOR_DEFAULT_VALUE) {
+                        updateSettings({ preferredEditor: null });
+                        return;
+                      }
+                      if (!isEditorId(value) || !availableEditorIds.has(value)) return;
+                      updateSettings({ preferredEditor: value });
+                    }}
+                  >
+                    <SelectTrigger
+                      className="w-full shrink-0 sm:w-56"
+                      aria-label="Preferred editor"
+                      disabled={availableEditors.length === 0}
+                    >
+                      <SelectValue>
+                        {preferredEditorSelectValue === PREFERRED_EDITOR_DEFAULT_VALUE
+                          ? "System default (first available)"
+                          : labelForEditor(preferredEditorSelectValue)}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="end">
+                      <SelectItem value={PREFERRED_EDITOR_DEFAULT_VALUE}>
+                        System default (first available)
+                      </SelectItem>
+                      {preferredEditorOptions.map((editor) => (
+                        <SelectItem key={editor.id} value={editor.id}>
+                          {editor.label}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </div>
+
+                <label htmlFor="preferred-editor-executable-path" className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">
+                    Custom preferred editor executable path
+                  </span>
+                  <Input
+                    id="preferred-editor-executable-path"
+                    value={settings.preferredEditorExecutablePath}
+                    onChange={(event) =>
+                      updateSettings({ preferredEditorExecutablePath: event.target.value })
+                    }
+                    placeholder={preferredEditorPathPlaceholder}
+                    spellCheck={false}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Used only when your preferred editor is unavailable. Absolute paths only.
+                  </span>
+                </label>
+
+                {availableEditors.length === 0 ? (
+                  <p className="text-xs text-amber-700">
+                    No available editors were detected from server config.
+                  </p>
+                ) : null}
+
+                {preferredEditorUnavailable ? (
+                  <p className="text-xs text-amber-700">
+                    Saved preferred editor ({labelForEditor(settings.preferredEditor)}) is not
+                    currently available. Open actions will try this custom path if set.
+                  </p>
+                ) : null}
+
+                {(settings.preferredEditor !== defaults.preferredEditor ||
+                  settings.preferredEditorExecutablePath !==
+                    defaults.preferredEditorExecutablePath) && (
+                  <div className="flex justify-end">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() =>
+                        updateSettings({
+                          preferredEditor: defaults.preferredEditor,
+                          preferredEditorExecutablePath: defaults.preferredEditorExecutablePath,
+                        })
+                      }
+                    >
+                      Restore editor defaults
+                    </Button>
+                  </div>
+                )}
               </div>
             </section>
 

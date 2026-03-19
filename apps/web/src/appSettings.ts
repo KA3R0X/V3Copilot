@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { Option, Schema } from "effect";
-import { TrimmedNonEmptyString, type ProviderKind } from "@t3tools/contracts";
+import { EditorId, TrimmedNonEmptyString, type ProviderKind } from "@t3tools/contracts";
 import { getDefaultModel, getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 
 const APP_SETTINGS_STORAGE_KEY = "t3code:app-settings:v1";
@@ -42,6 +42,12 @@ const AppSettingsSchema = Schema.Struct({
   ),
   customCopilotModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  preferredEditor: Schema.NullOr(EditorId).pipe(
+    Schema.withConstructorDefault(() => Option.some(null)),
+  ),
+  preferredEditorExecutablePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    Schema.withConstructorDefault(() => Option.some("")),
   ),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
 });
@@ -100,6 +106,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     ...settings,
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
+    preferredEditorExecutablePath: settings.preferredEditorExecutablePath.trim(),
   };
 }
 
@@ -245,6 +252,18 @@ function persistSettings(next: AppSettings): void {
   cachedSnapshot = next;
 }
 
+export function updateAppSettings(patch: Partial<AppSettings>): AppSettings {
+  const next = normalizeAppSettings(
+    Schema.decodeSync(AppSettingsSchema)({
+      ...getAppSettingsSnapshot(),
+      ...patch,
+    }),
+  );
+  persistSettings(next);
+  emitChange();
+  return next;
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.push(listener);
 
@@ -269,14 +288,7 @@ export function useAppSettings() {
   );
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
-    const next = normalizeAppSettings(
-      Schema.decodeSync(AppSettingsSchema)({
-        ...getAppSettingsSnapshot(),
-        ...patch,
-      }),
-    );
-    persistSettings(next);
-    emitChange();
+    updateAppSettings(patch);
   }, []);
 
   const resetSettings = useCallback(() => {

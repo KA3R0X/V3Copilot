@@ -1,35 +1,140 @@
 import { EDITORS, EditorId, NativeApi } from "@t3tools/contracts";
+import { useCallback, useEffect, useMemo } from "react";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "./hooks/useLocalStorage";
-import { useMemo } from "react";
+import { getAppSettingsSnapshot, updateAppSettings, useAppSettings } from "./appSettings";
 
 const LAST_EDITOR_KEY = "t3code:last-editor";
 
+export interface ResolvedPreferredEditor {
+  readonly editor: EditorId | null;
+  readonly executablePath: string | null;
+}
+
+function normalizeExecutablePath(path: string): string | null {
+  const trimmed = path.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveFallbackEditor(availableEditorIds: ReadonlySet<EditorId>): EditorId | null {
+  return EDITORS.find((editor) => availableEditorIds.has(editor.id))?.id ?? null;
+}
+
+function persistLegacyEditor(editor: EditorId): void {
+  setLocalStorageItem(LAST_EDITOR_KEY, editor, EditorId);
+}
+
+function resolvePreferredEditorLaunch(input: {
+  readonly preferredEditor: EditorId | null;
+  readonly preferredEditorExecutablePath: string;
+  readonly availableEditors: readonly EditorId[];
+  readonly legacyStoredEditor: EditorId | null;
+}): ResolvedPreferredEditor {
+  const availableEditorIds = new Set(input.availableEditors);
+  const executablePath = normalizeExecutablePath(input.preferredEditorExecutablePath);
+  if (input.preferredEditor !== null) {
+    if (availableEditorIds.has(input.preferredEditor)) {
+      return { editor: input.preferredEditor, executablePath: null };
+    }
+    if (executablePath) {
+      return { editor: input.preferredEditor, executablePath };
+    }
+  } else if (input.legacyStoredEditor && availableEditorIds.has(input.legacyStoredEditor)) {
+    return { editor: input.legacyStoredEditor, executablePath: null };
+  }
+
+  const fallbackEditor = resolveFallbackEditor(availableEditorIds);
+  if (fallbackEditor) {
+    return { editor: fallbackEditor, executablePath: null };
+  }
+  return { editor: null, executablePath: null };
+}
+
+export function resolveAndPersistPreferredEditorLaunch(
+  availableEditors: readonly EditorId[],
+): ResolvedPreferredEditor {
+  const settings = getAppSettingsSnapshot();
+  const resolved = resolvePreferredEditorLaunch({
+    preferredEditor: settings.preferredEditor,
+    preferredEditorExecutablePath: settings.preferredEditorExecutablePath,
+    availableEditors,
+    legacyStoredEditor: getLocalStorageItem(LAST_EDITOR_KEY, EditorId),
+  });
+  if (resolved.editor) {
+    persistLegacyEditor(resolved.editor);
+    if (resolved.executablePath === null && settings.preferredEditor !== resolved.editor) {
+      updateAppSettings({ preferredEditor: resolved.editor });
+    }
+  }
+  return resolved;
+}
+
+export function resolveExecutablePathForEditor(
+  editor: EditorId,
+  availableEditors: readonly EditorId[],
+): string | undefined {
+  const settings = getAppSettingsSnapshot();
+  if (settings.preferredEditor !== editor) {
+    return undefined;
+  }
+  if (availableEditors.includes(editor)) {
+    return undefined;
+  }
+  return normalizeExecutablePath(settings.preferredEditorExecutablePath) ?? undefined;
+}
+
 export function usePreferredEditor(availableEditors: ReadonlyArray<EditorId>) {
-  const [lastEditor, setLastEditor] = useLocalStorage(LAST_EDITOR_KEY, null, EditorId);
+  const { settings, updateSettings } = useAppSettings();
+  const [legacyStoredEditor] = useLocalStorage(LAST_EDITOR_KEY, null, EditorId);
 
-  const effectiveEditor = useMemo(() => {
-    if (lastEditor && availableEditors.includes(lastEditor)) return lastEditor;
-    return EDITORS.find((editor) => availableEditors.includes(editor.id))?.id ?? null;
-  }, [lastEditor, availableEditors]);
+  const resolved = useMemo(
+    () =>
+      resolvePreferredEditorLaunch({
+        preferredEditor: settings.preferredEditor,
+        preferredEditorExecutablePath: settings.preferredEditorExecutablePath,
+        availableEditors,
+        legacyStoredEditor,
+      }),
+    [
+      availableEditors,
+      legacyStoredEditor,
+      settings.preferredEditor,
+      settings.preferredEditorExecutablePath,
+    ],
+  );
 
-  return [effectiveEditor, setLastEditor] as const;
+  useEffect(() => {
+    if (!resolved.editor) {
+      return;
+    }
+    persistLegacyEditor(resolved.editor);
+    if (resolved.executablePath === null && settings.preferredEditor !== resolved.editor) {
+      updateSettings({ preferredEditor: resolved.editor });
+    }
+  }, [resolved.editor, resolved.executablePath, settings.preferredEditor, updateSettings]);
+
+  const setPreferredEditor = useCallback(
+    (editor: EditorId | null) => {
+      updateSettings({ preferredEditor: editor });
+      if (editor) {
+        persistLegacyEditor(editor);
+      }
+    },
+    [updateSettings],
+  );
+
+  return [resolved.editor, setPreferredEditor] as const;
 }
 
 export function resolveAndPersistPreferredEditor(
   availableEditors: readonly EditorId[],
 ): EditorId | null {
-  const availableEditorIds = new Set(availableEditors);
-  const stored = getLocalStorageItem(LAST_EDITOR_KEY, EditorId);
-  if (stored && availableEditorIds.has(stored)) return stored;
-  const editor = EDITORS.find((editor) => availableEditorIds.has(editor.id))?.id ?? null;
-  if (editor) setLocalStorageItem(LAST_EDITOR_KEY, editor, EditorId);
-  return editor ?? null;
+  return resolveAndPersistPreferredEditorLaunch(availableEditors).editor;
 }
 
 export async function openInPreferredEditor(api: NativeApi, targetPath: string): Promise<EditorId> {
   const { availableEditors } = await api.server.getConfig();
-  const editor = resolveAndPersistPreferredEditor(availableEditors);
+  const { editor, executablePath } = resolveAndPersistPreferredEditorLaunch(availableEditors);
   if (!editor) throw new Error("No available editors found.");
-  await api.shell.openInEditor(targetPath, editor);
+  await api.shell.openInEditor(targetPath, editor, executablePath ?? undefined);
   return editor;
 }
