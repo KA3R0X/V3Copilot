@@ -27,10 +27,17 @@ This document covers how to run desktop releases from one tag, first without sig
   - The desktop UI shows a rocket update button when an update is available; click once to download, click again after download to restart/install.
 - Provider: GitHub Releases (`provider: github`) configured at build time.
 - Repository slug source:
-  - `T3CODE_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set.
+  - `V3 Copilot_DESKTOP_UPDATE_REPOSITORY` (format `owner/repo`), if set.
   - otherwise `GITHUB_REPOSITORY` from GitHub Actions.
+  - otherwise the fork default `KA3R0X/V3Copilot`, so local/manual desktop builds still publish updater metadata against this fork.
+- Release workflow default:
+  - `.github/workflows/release.yml` exports `V3 Copilot_DESKTOP_UPDATE_REPOSITORY` as `${{ vars.V3 Copilot_DESKTOP_UPDATE_REPOSITORY || github.repository }}`.
+  - leave it unset to use the current repository, or define the repository variable to point packaged apps at another release source.
+- Marketing release links:
+  - default to `KA3R0X/V3Copilot`
+  - set `PUBLIC_V3 Copilot_RELEASE_REPOSITORY` at build time to override the releases page/API source
 - Temporary private-repo auth workaround:
-  - set `T3CODE_DESKTOP_UPDATE_GITHUB_TOKEN` (or `GH_TOKEN`) in the desktop app runtime environment.
+  - set `V3 Copilot_DESKTOP_UPDATE_GITHUB_TOKEN` (or `GH_TOKEN`) in the desktop app runtime environment.
   - the app forwards it as an `Authorization: Bearer <token>` request header for updater HTTP calls.
 - Required release assets for updater:
   - platform installers (`.exe`, `.dmg`, `.AppImage`, plus macOS `.zip` for Squirrel.Mac update payloads)

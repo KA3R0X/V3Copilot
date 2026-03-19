@@ -185,7 +185,7 @@
     "@types/node": "^24.10.13",
     "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b",
     "tsdown": "^0.20.3",
-    "typescript": "5.9.3",
+    "typescript": "^5.7.3",
     "vitest": "^4.0.0",
   },
   "packages": {
