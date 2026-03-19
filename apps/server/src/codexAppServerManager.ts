@@ -404,10 +404,9 @@ export function normalizeCodexModelSlug(
 export function buildCodexInitializeParams() {
   return {
     clientInfo: {
-      name: "V3 Copilot_desktop",
+      name: "v3copilot_desktop",
       title: "V3 Copilot Desktop",
       version: "0.1.0",
-
     },
     capabilities: {
       experimentalApi: true,
