@@ -255,7 +255,7 @@ const publishCmd = Command.make(
 // ---------------------------------------------------------------------------
 
 const cli = Command.make("cli").pipe(
-  Command.withDescription("V3 Copilot server build & publish CLI."),
+  Command.withDescription("T3 server build & publish CLI."),
   Command.withSubcommands([buildCmd, publishCmd]),
 );
 

@@ -3,7 +3,7 @@ export interface GitHubRepositorySlug {
   readonly repo: string;
 }
 
-export const DEFAULT_GITHUB_REPOSITORY = "KA3R0X/V3Copilot";
+export const DEFAULT_GITHUB_REPOSITORY = "zortos293/t3code-copilot";
 
 export function parseGitHubRepository(
   value: string | null | undefined,
