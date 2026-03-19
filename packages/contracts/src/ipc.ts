@@ -155,7 +155,7 @@ export interface NativeApi {
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
   };
   shell: {
-    openInEditor: (cwd: string, editor: EditorId) => Promise<void>;
+    openInEditor: (cwd: string, editor: EditorId, executablePath?: string) => Promise<void>;
     openExternal: (url: string) => Promise<void>;
   };
   git: {
