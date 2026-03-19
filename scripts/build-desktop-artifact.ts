@@ -666,13 +666,13 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
     t3codeCommitHash: commitHash,
     packageManager: rootPackageJson.packageManager,
     private: true,
-    description: "T3 Code desktop build",
-    author: "T3 Tools",
+    description: "V3 Copilot desktop build",
+    author: "V3 Copilot",
     main: "apps/desktop/dist-electron/main.js",
     build: yield* createBuildConfig(
       options.platform,
       options.target,
-      desktopPackageJson.productName ?? "T3 Code",
+      desktopPackageJson.productName ?? "V3 Copilot",
       options.signed,
     ),
     dependencies: {
@@ -815,7 +815,7 @@ const buildDesktopArtifactCli = Command.make("build-desktop-artifact", {
     Flag.optional,
   ),
 }).pipe(
-  Command.withDescription("Build a desktop artifact for T3 Code."),
+  Command.withDescription("Build a desktop artifact for V3 Copilot."),
   Command.withHandler((input) => Effect.flatMap(resolveBuildOptions(input), buildDesktopArtifact)),
 );
 
