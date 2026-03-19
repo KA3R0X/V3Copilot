@@ -1,9 +1,9 @@
 {
-  "name": "t3",
-  "version": "0.1.25",
+  "name": "V3 Copilot",
+  "version": "0.1.26",
   "repository": {
     "type": "git",
-    "url": "https://github.com/zortos293/t3code-copilot",
+    "url": "https://github.com/KA3R0X/V3Copilot",
     "directory": "apps/server"
   },
   "bin": {

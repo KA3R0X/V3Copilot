@@ -8,17 +8,17 @@ import {
 
 describe("parseGitHubRepository", () => {
   it("parses valid owner/repo slugs", () => {
-    expect(parseGitHubRepository("zortos293/t3code-copilot")).toEqual({
-      owner: "zortos293",
-      repo: "t3code-copilot",
+    expect(parseGitHubRepository("KA3R0X/V3Copilot")).toEqual({
+      owner: "KA3R0X",
+      repo: "V3Copilot",
     });
   });
 
   it("rejects invalid repository slugs", () => {
     expect(parseGitHubRepository("")).toBeNull();
     expect(parseGitHubRepository("zortos293")).toBeNull();
-    expect(parseGitHubRepository("zortos293/t3code-copilot/releases")).toBeNull();
-    expect(parseGitHubRepository("zortos293 /t3code-copilot")).toBeNull();
+    expect(parseGitHubRepository("KA3R0X/V3Copilot/releases")).toBeNull();
+    expect(parseGitHubRepository("KA3R0X /V3Copilot")).toBeNull();
   });
 });
 
