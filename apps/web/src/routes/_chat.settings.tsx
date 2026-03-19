@@ -128,11 +128,9 @@ function SettingsRouteView() {
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
   const availableEditorIds = new Set(availableEditors);
-  const preferredEditorOptions = EDITORS.filter((editor) => availableEditorIds.has(editor.id));
+  const preferredEditorOptions = EDITORS;
   const preferredEditorSelectValue: EditorId | typeof PREFERRED_EDITOR_DEFAULT_VALUE =
-    settings.preferredEditor !== null && availableEditorIds.has(settings.preferredEditor)
-      ? settings.preferredEditor
-      : PREFERRED_EDITOR_DEFAULT_VALUE;
+    settings.preferredEditor ?? PREFERRED_EDITOR_DEFAULT_VALUE;
   const preferredEditorUnavailable =
     settings.preferredEditor !== null && !availableEditorIds.has(settings.preferredEditor);
   const preferredEditorPathPlaceholder =
@@ -371,14 +369,13 @@ function SettingsRouteView() {
                         updateSettings({ preferredEditor: null });
                         return;
                       }
-                      if (!isEditorId(value) || !availableEditorIds.has(value)) return;
+                      if (!isEditorId(value)) return;
                       updateSettings({ preferredEditor: value });
                     }}
                   >
                     <SelectTrigger
                       className="w-full shrink-0 sm:w-56"
                       aria-label="Preferred editor"
-                      disabled={availableEditors.length === 0}
                     >
                       <SelectValue>
                         {preferredEditorSelectValue === PREFERRED_EDITOR_DEFAULT_VALUE
@@ -393,6 +390,7 @@ function SettingsRouteView() {
                       {preferredEditorOptions.map((editor) => (
                         <SelectItem key={editor.id} value={editor.id}>
                           {editor.label}
+                          {availableEditorIds.has(editor.id) ? "" : " (not detected)"}
                         </SelectItem>
                       ))}
                     </SelectPopup>
