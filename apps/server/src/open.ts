@@ -167,10 +167,14 @@ export function isCommandAvailable(
 }
 
 export function shouldUseShellForLaunch(command: string, platform: NodeJS.Platform): boolean {
-  // On Windows, always use shell for launching GUI applications to ensure
-  // proper process detachment from Electron's Node environment
-  if (platform === "win32") return true;
-  return false;
+  if (platform !== "win32") return false;
+  // Batch/CMD scripts need shell even with absolute paths
+  const ext = extname(command).toLowerCase();
+  if (ext === ".bat" || ext === ".cmd") return true;
+  // Absolute paths to executables don't need shell
+  if (isAbsolute(command)) return false;
+  // Command names without path separators need shell for PATH resolution
+  return !(command.includes("/") || command.includes("\\"));
 }
 
 export function resolveAvailableEditors(
