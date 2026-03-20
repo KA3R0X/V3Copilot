@@ -65,8 +65,8 @@ export function resolveOpenInPickerOptions(input: {
     { label: fileManagerLabel, value: "file-manager" },
   ];
 
-  const detectedOptions: OpenInPickerOption[] = baseOptions.filter(
-    (option) => input.availableEditors.includes(option.value) || input.hasCustomExecutablePath,
+  const detectedOptions: OpenInPickerOption[] = baseOptions.filter((option) =>
+    input.availableEditors.includes(option.value),
   );
   if (input.hasCustomExecutablePath) {
     detectedOptions.push({ label: "Custom Editor", value: CUSTOM_EDITOR_OPTION_VALUE });
