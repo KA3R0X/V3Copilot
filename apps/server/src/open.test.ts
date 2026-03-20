@@ -8,6 +8,7 @@ import {
   launchDetached,
   resolveAvailableEditors,
   resolveEditorLaunch,
+  shouldUseShellForLaunch,
 } from "./open";
 
 it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
@@ -121,6 +122,23 @@ it.layer(NodeServices.layer)("resolveEditorLaunch", (it) => {
       });
     }),
   );
+
+  it.effect("uses absolute custom executable path and strips wrapping quotes", () =>
+    Effect.gen(function* () {
+      const launch = yield* resolveEditorLaunch(
+        {
+          cwd: "C:\\workspace",
+          editor: "vscode",
+          executablePath: '"C:\\Program Files\\Microsoft VS Code\\Code.exe"',
+        },
+        "win32",
+      );
+      assert.deepEqual(launch, {
+        command: "C:\\Program Files\\Microsoft VS Code\\Code.exe",
+        args: ["C:\\workspace"],
+      });
+    }),
+  );
 });
 
 it.layer(NodeServices.layer)("launchDetached", (it) => {
@@ -211,6 +229,15 @@ it.layer(NodeServices.layer)("isCommandAvailable", (it) => {
       assert.equal(isCommandAvailable("code", { platform: "win32", env }), true);
     }),
   );
+});
+
+it("shouldUseShellForLaunch", () => {
+  assert.equal(shouldUseShellForLaunch("code", "win32"), true);
+  assert.equal(
+    shouldUseShellForLaunch("C:\\Program Files\\Microsoft VS Code\\Code.exe", "win32"),
+    false,
+  );
+  assert.equal(shouldUseShellForLaunch("/usr/bin/code", "linux"), false);
 });
 
 it.layer(NodeServices.layer)("resolveAvailableEditors", (it) => {

@@ -162,6 +162,12 @@ export function isCommandAvailable(
   return false;
 }
 
+export function shouldUseShellForLaunch(command: string, platform: NodeJS.Platform): boolean {
+  if (platform !== "win32") return false;
+  if (isAbsolute(command)) return false;
+  return !(command.includes("/") || command.includes("\\"));
+}
+
 export function resolveAvailableEditors(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
@@ -208,7 +214,9 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
   input: OpenInEditorInput,
   platform: NodeJS.Platform = process.platform,
 ): Effect.fn.Return<EditorLaunch, OpenError> {
-  const explicitExecutablePath = input.executablePath?.trim();
+  const explicitExecutablePath = input.executablePath
+    ? stripWrappingQuotes(input.executablePath.trim())
+    : undefined;
   if (explicitExecutablePath && explicitExecutablePath.length > 0) {
     if (!isAbsolute(explicitExecutablePath)) {
       return yield* new OpenError({
@@ -255,7 +263,7 @@ export const launchDetached = (launch: EditorLaunch) =>
         child = spawn(launch.command, [...launch.args], {
           detached: true,
           stdio: "ignore",
-          shell: process.platform === "win32",
+          shell: shouldUseShellForLaunch(launch.command, process.platform),
         });
       } catch (error) {
         return resume(
