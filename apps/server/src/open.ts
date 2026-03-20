@@ -159,13 +159,18 @@ export function isCommandAvailable(
       }
     }
   }
-  return false;
+  const result = false;
+  if (!result) {
+    Effect.runSync(Effect.logDebug(`Command ${command} not found on PATH. PATH: ${pathValue}`));
+  }
+  return result;
 }
 
 export function shouldUseShellForLaunch(command: string, platform: NodeJS.Platform): boolean {
-  if (platform !== "win32") return false;
-  if (isAbsolute(command)) return false;
-  return !(command.includes("/") || command.includes("\\"));
+  // On Windows, always use shell for launching GUI applications to ensure
+  // proper process detachment from Electron's Node environment
+  if (platform === "win32") return true;
+  return false;
 }
 
 export function resolveAvailableEditors(
@@ -218,19 +223,26 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
     ? stripWrappingQuotes(input.executablePath.trim())
     : undefined;
   if (explicitExecutablePath && explicitExecutablePath.length > 0) {
-    if (!isAbsolute(explicitExecutablePath)) {
+    const hasPathSeparator =
+      explicitExecutablePath.includes("/") || explicitExecutablePath.includes("\\");
+    if (hasPathSeparator && !isAbsolute(explicitExecutablePath)) {
       return yield* new OpenError({
-        message: `Executable path must be absolute: ${explicitExecutablePath}`,
+        message: `Executable path must be absolute if it contains separators: ${explicitExecutablePath}`,
       });
     }
     if (!isCommandAvailable(explicitExecutablePath, { platform })) {
       return yield* new OpenError({
-        message: `Editor executable path is not runnable: ${explicitExecutablePath}`,
+        message: `Editor executable path is not runnable or not on PATH: ${explicitExecutablePath}`,
       });
     }
-    return shouldUseGotoFlag(input.editor, input.cwd)
+    const result = shouldUseGotoFlag(input.editor, input.cwd)
       ? { command: explicitExecutablePath, args: ["--goto", input.cwd] }
       : { command: explicitExecutablePath, args: [input.cwd] };
+
+    yield* Effect.logInfo(
+      `Resolved custom editor launch: ${result.command} ${result.args.join(" ")}`,
+    );
+    return result;
   }
 
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
@@ -257,15 +269,21 @@ export const launchDetached = (launch: EditorLaunch) =>
       return yield* new OpenError({ message: `Editor command not found: ${launch.command}` });
     }
 
+    const useShell = shouldUseShellForLaunch(launch.command, process.platform);
+    yield* Effect.logInfo(
+      `Launching detached command: ${launch.command} ${launch.args.join(" ")} (shell=${useShell})`,
+    );
+
     yield* Effect.callback<void, OpenError>((resume) => {
       let child;
       try {
         child = spawn(launch.command, [...launch.args], {
           detached: true,
           stdio: "ignore",
-          shell: shouldUseShellForLaunch(launch.command, process.platform),
+          shell: useShell,
         });
       } catch (error) {
+        Effect.runSync(Effect.logError(`Spawn failed: ${String(error)}`));
         return resume(
           Effect.fail(new OpenError({ message: "failed to spawn detached process", cause: error })),
         );

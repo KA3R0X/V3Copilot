@@ -14,7 +14,9 @@ import {
   CUSTOM_EDITOR_FALLBACK_TYPE,
   CUSTOM_EDITOR_OPTION_VALUE,
   isCustomEditorOption,
+  resolveCustomEditorPreferenceForSelection,
   resolveOpenInPickerOptions,
+  resolveUseCustomEditor,
   type OpenInPickerOptionValue,
 } from "./OpenInPicker.logic";
 
@@ -67,7 +69,13 @@ export const OpenInPicker = memo(function OpenInPicker({
   const { settings, updateSettings } = useAppSettings();
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
   const hasCustomExecutablePath = settings.preferredEditorExecutablePath.trim().length > 0;
-  const useCustomEditor = settings.useCustomEditorPath && hasCustomExecutablePath;
+  const useCustomEditor = resolveUseCustomEditor({
+    hasCustomExecutablePath,
+    preference: {
+      useCustomEditorPath: settings.useCustomEditorPath,
+      useCustomEditorPathTouched: settings.useCustomEditorPathTouched,
+    },
+  });
 
   const options = useMemo(
     () => resolveOptions(navigator.platform, availableEditors, hasCustomExecutablePath),
@@ -98,18 +106,30 @@ export const OpenInPicker = memo(function OpenInPicker({
           });
           return;
         }
-        // Use a generic editor type - the server will use the custom path directly
-        void api.shell
-          .openInEditor(openInCwd, CUSTOM_EDITOR_FALLBACK_TYPE, customPath)
-          .catch((error) => {
-            toastManager.add({
-              type: "error",
-              title: "Unable to open editor",
-              description: error instanceof Error ? error.message : "Unknown editor launch error.",
-            });
+        // In desktop mode, use IPC to spawn from main process (avoids ELECTRON_RUN_AS_NODE limitations)
+        if (window.desktopBridge?.openInEditor) {
+          void window.desktopBridge.openInEditor(customPath, openInCwd).then((success) => {
+            if (!success) {
+              toastManager.add({
+                type: "error",
+                title: "Unable to open editor",
+                description: "Failed to launch custom editor.",
+              });
+            }
           });
-        // Persist custom editor as the selected option
-        updateSettings({ useCustomEditorPath: true });
+        } else {
+          // Web mode - use WebSocket to server
+          void api.shell
+            .openInEditor(openInCwd, CUSTOM_EDITOR_FALLBACK_TYPE, customPath)
+            .catch((error) => {
+              toastManager.add({
+                type: "error",
+                title: "Unable to open editor",
+                description:
+                  error instanceof Error ? error.message : "Unknown editor launch error.",
+              });
+            });
+        }
       } else {
         const editor = (optionValue as EditorId | null) ?? preferredEditor;
         if (!editor) return;
@@ -122,11 +142,8 @@ export const OpenInPicker = memo(function OpenInPicker({
           });
         });
         setPreferredEditor(editor);
-        // Clear custom editor preference when selecting a detected editor
-        if (settings.useCustomEditorPath) {
-          updateSettings({ useCustomEditorPath: false });
-        }
       }
+      updateSettings(resolveCustomEditorPreferenceForSelection(optionValue ?? activeOptionValue));
     },
     [
       activeOptionValue,
@@ -134,8 +151,8 @@ export const OpenInPicker = memo(function OpenInPicker({
       openInCwd,
       preferredEditor,
       setPreferredEditor,
-      settings,
       updateSettings,
+      settings.preferredEditorExecutablePath,
     ],
   );
 
@@ -155,15 +172,29 @@ export const OpenInPicker = memo(function OpenInPicker({
       if (useCustomEditor) {
         const customPath = settings.preferredEditorExecutablePath.trim();
         if (!customPath) return;
-        void api.shell
-          .openInEditor(openInCwd, CUSTOM_EDITOR_FALLBACK_TYPE, customPath)
-          .catch((error) => {
-            toastManager.add({
-              type: "error",
-              title: "Unable to open editor",
-              description: error instanceof Error ? error.message : "Unknown editor launch error.",
-            });
+        // In desktop mode, use IPC to spawn from main process
+        if (window.desktopBridge?.openInEditor) {
+          void window.desktopBridge.openInEditor(customPath, openInCwd).then((success) => {
+            if (!success) {
+              toastManager.add({
+                type: "error",
+                title: "Unable to open editor",
+                description: "Failed to launch custom editor.",
+              });
+            }
           });
+        } else {
+          void api.shell
+            .openInEditor(openInCwd, CUSTOM_EDITOR_FALLBACK_TYPE, customPath)
+            .catch((error) => {
+              toastManager.add({
+                type: "error",
+                title: "Unable to open editor",
+                description:
+                  error instanceof Error ? error.message : "Unknown editor launch error.",
+              });
+            });
+        }
       } else {
         if (!preferredEditor) return;
         const executablePath = resolveExecutablePathForEditor(preferredEditor, availableEditors);

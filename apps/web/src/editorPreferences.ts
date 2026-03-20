@@ -31,12 +31,13 @@ function resolvePreferredEditorLaunch(input: {
 }): ResolvedPreferredEditor {
   const availableEditorIds = new Set(input.availableEditors);
   const executablePath = normalizeExecutablePath(input.preferredEditorExecutablePath);
+
   if (input.preferredEditor !== null) {
-    if (availableEditorIds.has(input.preferredEditor)) {
-      return { editor: input.preferredEditor, executablePath: null };
-    }
     if (executablePath) {
       return { editor: input.preferredEditor, executablePath };
+    }
+    if (availableEditorIds.has(input.preferredEditor)) {
+      return { editor: input.preferredEditor, executablePath: null };
     }
   } else if (input.legacyStoredEditor && availableEditorIds.has(input.legacyStoredEditor)) {
     return { editor: input.legacyStoredEditor, executablePath: null };
@@ -44,9 +45,9 @@ function resolvePreferredEditorLaunch(input: {
 
   const fallbackEditor = resolveFallbackEditor(availableEditorIds);
   if (fallbackEditor) {
-    return { editor: fallbackEditor, executablePath: null };
+    return { editor: fallbackEditor, executablePath: executablePath };
   }
-  return { editor: null, executablePath: null };
+  return { editor: null, executablePath: executablePath };
 }
 
 export function resolveAndPersistPreferredEditorLaunch(
@@ -78,13 +79,11 @@ export function resolveExecutablePathForEditor(
   availableEditors: readonly EditorId[],
 ): string | undefined {
   const settings = getAppSettingsSnapshot();
-  if (settings.preferredEditor !== editor) {
-    return undefined;
+  const customPath = normalizeExecutablePath(settings.preferredEditorExecutablePath);
+  if (customPath) {
+    return customPath;
   }
-  if (availableEditors.includes(editor)) {
-    return undefined;
-  }
-  return normalizeExecutablePath(settings.preferredEditorExecutablePath) ?? undefined;
+  return undefined;
 }
 
 export function usePreferredEditor(availableEditors: ReadonlyArray<EditorId>) {

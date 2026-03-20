@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TIMESTAMP_FORMAT,
   getAppModelOptions,
+  getAppSettingsSnapshot,
   normalizeCustomModelSlugs,
   resolveAppModelSelection,
+  updateAppSettings,
 } from "./appSettings";
 
 describe("normalizeCustomModelSlugs", () => {
@@ -63,5 +65,28 @@ describe("resolveAppModelSelection", () => {
 describe("timestamp format defaults", () => {
   it("defaults timestamp format to locale", () => {
     expect(DEFAULT_TIMESTAMP_FORMAT).toBe("locale");
+  });
+});
+
+describe("custom editor preference defaults", () => {
+  it("defaults useCustomEditorPathTouched to false", () => {
+    const store = new Map<string, string>();
+    const windowMock = {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+      },
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    } as unknown as Window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: windowMock,
+    });
+
+    updateAppSettings({ useCustomEditorPath: true });
+    expect(getAppSettingsSnapshot().useCustomEditorPathTouched).toBe(false);
   });
 });

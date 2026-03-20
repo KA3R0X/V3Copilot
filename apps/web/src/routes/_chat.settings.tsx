@@ -27,6 +27,7 @@ import {
 import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
+import { resolveCustomEditorPreferenceForPathEdit } from "../components/chat/OpenInPicker.logic";
 
 const THEME_OPTIONS = [
   {
@@ -429,7 +430,10 @@ function SettingsRouteView() {
                       id="preferred-editor-executable-path"
                       value={settings.preferredEditorExecutablePath}
                       onChange={(event) =>
-                        updateSettings({ preferredEditorExecutablePath: event.target.value })
+                        updateSettings({
+                          preferredEditorExecutablePath: event.target.value,
+                          ...resolveCustomEditorPreferenceForPathEdit(),
+                        })
                       }
                       placeholder={preferredEditorPathPlaceholder}
                       spellCheck={false}
@@ -460,6 +464,8 @@ function SettingsRouteView() {
                 ) : null}
 
                 {(settings.preferredEditor !== defaults.preferredEditor ||
+                  settings.useCustomEditorPath !== defaults.useCustomEditorPath ||
+                  settings.useCustomEditorPathTouched !== defaults.useCustomEditorPathTouched ||
                   settings.preferredEditorExecutablePath !==
                     defaults.preferredEditorExecutablePath) && (
                   <div className="flex justify-end">
@@ -470,6 +476,8 @@ function SettingsRouteView() {
                         updateSettings({
                           preferredEditor: defaults.preferredEditor,
                           preferredEditorExecutablePath: defaults.preferredEditorExecutablePath,
+                          useCustomEditorPath: defaults.useCustomEditorPath,
+                          useCustomEditorPathTouched: defaults.useCustomEditorPathTouched,
                         })
                       }
                     >

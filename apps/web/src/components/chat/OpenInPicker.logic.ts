@@ -10,10 +10,40 @@ export interface OpenInPickerOption {
   readonly value: OpenInPickerOptionValue;
 }
 
+export interface CustomEditorPreference {
+  readonly useCustomEditorPath: boolean;
+  readonly useCustomEditorPathTouched: boolean;
+}
+
 export function isCustomEditorOption(
   value: OpenInPickerOptionValue,
 ): value is typeof CUSTOM_EDITOR_OPTION_VALUE {
   return value === CUSTOM_EDITOR_OPTION_VALUE;
+}
+
+export function resolveUseCustomEditor(input: {
+  readonly hasCustomExecutablePath: boolean;
+  readonly preference: CustomEditorPreference;
+}): boolean {
+  if (!input.hasCustomExecutablePath) {
+    return false;
+  }
+  return input.preference.useCustomEditorPath;
+}
+
+export function resolveCustomEditorPreferenceForSelection(
+  value: OpenInPickerOptionValue,
+): CustomEditorPreference {
+  return isCustomEditorOption(value)
+    ? { useCustomEditorPath: true, useCustomEditorPathTouched: true }
+    : { useCustomEditorPath: false, useCustomEditorPathTouched: true };
+}
+
+export function resolveCustomEditorPreferenceForPathEdit(): CustomEditorPreference {
+  return {
+    useCustomEditorPath: true,
+    useCustomEditorPathTouched: true,
+  };
 }
 
 export function resolveOpenInPickerOptions(input: {
@@ -35,8 +65,8 @@ export function resolveOpenInPickerOptions(input: {
     { label: fileManagerLabel, value: "file-manager" },
   ];
 
-  const detectedOptions: OpenInPickerOption[] = baseOptions.filter((option) =>
-    input.availableEditors.includes(option.value),
+  const detectedOptions: OpenInPickerOption[] = baseOptions.filter(
+    (option) => input.availableEditors.includes(option.value) || input.hasCustomExecutablePath,
   );
   if (input.hasCustomExecutablePath) {
     detectedOptions.push({ label: "Custom Editor", value: CUSTOM_EDITOR_OPTION_VALUE });
