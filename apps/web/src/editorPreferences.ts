@@ -75,8 +75,8 @@ export function resolveAndPersistPreferredEditorLaunch(
 }
 
 export function resolveExecutablePathForEditor(
-  editor: EditorId,
-  availableEditors: readonly EditorId[],
+  _editor: EditorId,
+  _availableEditors: readonly EditorId[],
 ): string | undefined {
   const settings = getAppSettingsSnapshot();
   const customPath = normalizeExecutablePath(settings.preferredEditorExecutablePath);
