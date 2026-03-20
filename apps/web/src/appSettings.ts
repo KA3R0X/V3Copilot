@@ -49,6 +49,10 @@ const AppSettingsSchema = Schema.Struct({
   preferredEditorExecutablePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     Schema.withConstructorDefault(() => Option.some("")),
   ),
+  useCustomEditorPathTouched: Schema.Boolean.pipe(
+    Schema.withConstructorDefault(() => Option.some(false)),
+  ),
+  useCustomEditorPath: Schema.Boolean.pipe(Schema.withConstructorDefault(() => Option.some(false))),
   textGenerationModel: Schema.optional(TrimmedNonEmptyString),
 });
 export type AppSettings = typeof AppSettingsSchema.Type;

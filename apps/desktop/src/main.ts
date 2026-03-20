@@ -62,6 +62,7 @@ const CONFIRM_CHANNEL = "desktop:confirm";
 const SET_THEME_CHANNEL = "desktop:set-theme";
 const CONTEXT_MENU_CHANNEL = "desktop:context-menu";
 const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
+const OPEN_IN_EDITOR_CHANNEL = "desktop:open-in-editor";
 const MENU_ACTION_CHANNEL = "desktop:menu-action";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
@@ -1067,6 +1068,22 @@ function scheduleBackendRestart(reason: string): void {
   }, delayMs);
 }
 
+async function waitForBackendReady(timeoutMs = 10_000, pollIntervalMs = 100): Promise<boolean> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${backendPort}/health`);
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      // Server not ready yet, keep polling
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+  return false;
+}
+
 function startBackend(): void {
   if (isQuitting || backendProcess) return;
 
@@ -1308,6 +1325,26 @@ function registerIpcHandlers(): void {
     }
   });
 
+  ipcMain.removeHandler(OPEN_IN_EDITOR_CHANNEL);
+  ipcMain.handle(
+    OPEN_IN_EDITOR_CHANNEL,
+    async (_event, executablePath: unknown, cwd: unknown): Promise<boolean> => {
+      if (typeof executablePath !== "string" || typeof cwd !== "string") {
+        return false;
+      }
+      try {
+        const child = ChildProcess.spawn(executablePath, [cwd], {
+          detached: true,
+          stdio: "ignore",
+        });
+        child.unref();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
+
   ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
   ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);
 
@@ -1454,6 +1491,14 @@ async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap ipc handlers registered");
   startBackend();
   writeDesktopLogHeader("bootstrap backend start requested");
+
+  const backendReady = await waitForBackendReady();
+  if (!backendReady) {
+    writeDesktopLogHeader("bootstrap backend not ready after timeout, proceeding anyway");
+  } else {
+    writeDesktopLogHeader("bootstrap backend ready");
+  }
+
   mainWindow = createWindow();
   writeDesktopLogHeader("bootstrap main window created");
 }

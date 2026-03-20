@@ -159,7 +159,22 @@ export function isCommandAvailable(
       }
     }
   }
-  return false;
+  const result = false;
+  if (!result) {
+    Effect.runSync(Effect.logDebug(`Command ${command} not found on PATH. PATH: ${pathValue}`));
+  }
+  return result;
+}
+
+export function shouldUseShellForLaunch(command: string, platform: NodeJS.Platform): boolean {
+  if (platform !== "win32") return false;
+  // Batch/CMD scripts need shell even with absolute paths
+  const ext = extname(command).toLowerCase();
+  if (ext === ".bat" || ext === ".cmd") return true;
+  // Absolute paths to executables don't need shell
+  if (isAbsolute(command)) return false;
+  // Command names without path separators need shell for PATH resolution
+  return !(command.includes("/") || command.includes("\\"));
 }
 
 export function resolveAvailableEditors(
@@ -208,21 +223,30 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
   input: OpenInEditorInput,
   platform: NodeJS.Platform = process.platform,
 ): Effect.fn.Return<EditorLaunch, OpenError> {
-  const explicitExecutablePath = input.executablePath?.trim();
+  const explicitExecutablePath = input.executablePath
+    ? stripWrappingQuotes(input.executablePath.trim())
+    : undefined;
   if (explicitExecutablePath && explicitExecutablePath.length > 0) {
-    if (!isAbsolute(explicitExecutablePath)) {
+    const hasPathSeparator =
+      explicitExecutablePath.includes("/") || explicitExecutablePath.includes("\\");
+    if (hasPathSeparator && !isAbsolute(explicitExecutablePath)) {
       return yield* new OpenError({
-        message: `Executable path must be absolute: ${explicitExecutablePath}`,
+        message: `Executable path must be absolute if it contains separators: ${explicitExecutablePath}`,
       });
     }
     if (!isCommandAvailable(explicitExecutablePath, { platform })) {
       return yield* new OpenError({
-        message: `Editor executable path is not runnable: ${explicitExecutablePath}`,
+        message: `Editor executable path is not runnable or not on PATH: ${explicitExecutablePath}`,
       });
     }
-    return shouldUseGotoFlag(input.editor, input.cwd)
+    const result = shouldUseGotoFlag(input.editor, input.cwd)
       ? { command: explicitExecutablePath, args: ["--goto", input.cwd] }
       : { command: explicitExecutablePath, args: [input.cwd] };
+
+    yield* Effect.logInfo(
+      `Resolved custom editor launch: ${result.command} ${result.args.join(" ")}`,
+    );
+    return result;
   }
 
   const editorDef = EDITORS.find((editor) => editor.id === input.editor);
@@ -249,15 +273,21 @@ export const launchDetached = (launch: EditorLaunch) =>
       return yield* new OpenError({ message: `Editor command not found: ${launch.command}` });
     }
 
+    const useShell = shouldUseShellForLaunch(launch.command, process.platform);
+    yield* Effect.logInfo(
+      `Launching detached command: ${launch.command} ${launch.args.join(" ")} (shell=${useShell})`,
+    );
+
     yield* Effect.callback<void, OpenError>((resume) => {
       let child;
       try {
         child = spawn(launch.command, [...launch.args], {
           detached: true,
           stdio: "ignore",
-          shell: process.platform === "win32",
+          shell: useShell,
         });
       } catch (error) {
+        Effect.runSync(Effect.logError(`Spawn failed: ${String(error)}`));
         return resume(
           Effect.fail(new OpenError({ message: "failed to spawn detached process", cause: error })),
         );

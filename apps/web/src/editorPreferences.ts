@@ -31,12 +31,13 @@ function resolvePreferredEditorLaunch(input: {
 }): ResolvedPreferredEditor {
   const availableEditorIds = new Set(input.availableEditors);
   const executablePath = normalizeExecutablePath(input.preferredEditorExecutablePath);
+
   if (input.preferredEditor !== null) {
-    if (availableEditorIds.has(input.preferredEditor)) {
-      return { editor: input.preferredEditor, executablePath: null };
-    }
     if (executablePath) {
       return { editor: input.preferredEditor, executablePath };
+    }
+    if (availableEditorIds.has(input.preferredEditor)) {
+      return { editor: input.preferredEditor, executablePath: null };
     }
   } else if (input.legacyStoredEditor && availableEditorIds.has(input.legacyStoredEditor)) {
     return { editor: input.legacyStoredEditor, executablePath: null };
@@ -44,24 +45,29 @@ function resolvePreferredEditorLaunch(input: {
 
   const fallbackEditor = resolveFallbackEditor(availableEditorIds);
   if (fallbackEditor) {
-    return { editor: fallbackEditor, executablePath: null };
+    return { editor: fallbackEditor, executablePath: executablePath };
   }
-  return { editor: null, executablePath: null };
+  return { editor: null, executablePath: executablePath };
 }
 
 export function resolveAndPersistPreferredEditorLaunch(
   availableEditors: readonly EditorId[],
 ): ResolvedPreferredEditor {
   const settings = getAppSettingsSnapshot();
+  const legacyStoredEditor = getLocalStorageItem(LAST_EDITOR_KEY, EditorId);
   const resolved = resolvePreferredEditorLaunch({
     preferredEditor: settings.preferredEditor,
     preferredEditorExecutablePath: settings.preferredEditorExecutablePath,
     availableEditors,
-    legacyStoredEditor: getLocalStorageItem(LAST_EDITOR_KEY, EditorId),
+    legacyStoredEditor,
   });
   if (resolved.editor) {
     persistLegacyEditor(resolved.editor);
-    if (resolved.executablePath === null && settings.preferredEditor !== resolved.editor) {
+    if (
+      resolved.executablePath === null &&
+      settings.preferredEditor === null &&
+      legacyStoredEditor === resolved.editor
+    ) {
       updateAppSettings({ preferredEditor: resolved.editor });
     }
   }
@@ -69,17 +75,15 @@ export function resolveAndPersistPreferredEditorLaunch(
 }
 
 export function resolveExecutablePathForEditor(
-  editor: EditorId,
-  availableEditors: readonly EditorId[],
+  _editor: EditorId,
+  _availableEditors: readonly EditorId[],
 ): string | undefined {
   const settings = getAppSettingsSnapshot();
-  if (settings.preferredEditor !== editor) {
-    return undefined;
+  const customPath = normalizeExecutablePath(settings.preferredEditorExecutablePath);
+  if (customPath) {
+    return customPath;
   }
-  if (availableEditors.includes(editor)) {
-    return undefined;
-  }
-  return normalizeExecutablePath(settings.preferredEditorExecutablePath) ?? undefined;
+  return undefined;
 }
 
 export function usePreferredEditor(availableEditors: ReadonlyArray<EditorId>) {
@@ -107,10 +111,20 @@ export function usePreferredEditor(availableEditors: ReadonlyArray<EditorId>) {
       return;
     }
     persistLegacyEditor(resolved.editor);
-    if (resolved.executablePath === null && settings.preferredEditor !== resolved.editor) {
+    if (
+      resolved.executablePath === null &&
+      settings.preferredEditor === null &&
+      legacyStoredEditor === resolved.editor
+    ) {
       updateSettings({ preferredEditor: resolved.editor });
     }
-  }, [resolved.editor, resolved.executablePath, settings.preferredEditor, updateSettings]);
+  }, [
+    legacyStoredEditor,
+    resolved.editor,
+    resolved.executablePath,
+    settings.preferredEditor,
+    updateSettings,
+  ]);
 
   const setPreferredEditor = useCallback(
     (editor: EditorId | null) => {

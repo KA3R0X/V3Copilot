@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   EDITORS,
   type EditorId,
   type ProviderKind,
 } from "@t3tools/contracts";
+import { CheckIcon } from "lucide-react";
 import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
 import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
 import { resolveAndPersistPreferredEditorLaunch } from "../editorPreferences";
@@ -26,6 +27,7 @@ import {
 import { Switch } from "../components/ui/switch";
 import { APP_VERSION } from "../branding";
 import { SidebarInset } from "~/components/ui/sidebar";
+import { resolveCustomEditorPreferenceForPathEdit } from "../components/chat/OpenInPicker.logic";
 
 const THEME_OPTIONS = [
   {
@@ -122,17 +124,37 @@ function SettingsRouteView() {
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
   >({});
+  const [editorPathSaved, setEditorPathSaved] = useState(false);
+  const editorPathSavedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevEditorPathRef = useRef(settings.preferredEditorExecutablePath);
+
+  useEffect(() => {
+    const currentPath = settings.preferredEditorExecutablePath;
+    if (currentPath !== prevEditorPathRef.current) {
+      prevEditorPathRef.current = currentPath;
+      if (editorPathSavedTimeoutRef.current) {
+        clearTimeout(editorPathSavedTimeoutRef.current);
+      }
+      setEditorPathSaved(true);
+      editorPathSavedTimeoutRef.current = setTimeout(() => {
+        setEditorPathSaved(false);
+      }, 2000);
+    }
+    return () => {
+      if (editorPathSavedTimeoutRef.current) {
+        clearTimeout(editorPathSavedTimeoutRef.current);
+      }
+    };
+  }, [settings.preferredEditorExecutablePath]);
 
   const codexBinaryPath = settings.codexBinaryPath;
   const codexHomePath = settings.codexHomePath;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
   const availableEditorIds = new Set(availableEditors);
-  const preferredEditorOptions = EDITORS.filter((editor) => availableEditorIds.has(editor.id));
+  const preferredEditorOptions = EDITORS;
   const preferredEditorSelectValue: EditorId | typeof PREFERRED_EDITOR_DEFAULT_VALUE =
-    settings.preferredEditor !== null && availableEditorIds.has(settings.preferredEditor)
-      ? settings.preferredEditor
-      : PREFERRED_EDITOR_DEFAULT_VALUE;
+    settings.preferredEditor ?? PREFERRED_EDITOR_DEFAULT_VALUE;
   const preferredEditorUnavailable =
     settings.preferredEditor !== null && !availableEditorIds.has(settings.preferredEditor);
   const preferredEditorPathPlaceholder =
@@ -371,14 +393,13 @@ function SettingsRouteView() {
                         updateSettings({ preferredEditor: null });
                         return;
                       }
-                      if (!isEditorId(value) || !availableEditorIds.has(value)) return;
+                      if (!isEditorId(value)) return;
                       updateSettings({ preferredEditor: value });
                     }}
                   >
                     <SelectTrigger
                       className="w-full shrink-0 sm:w-56"
                       aria-label="Preferred editor"
-                      disabled={availableEditors.length === 0}
                     >
                       <SelectValue>
                         {preferredEditorSelectValue === PREFERRED_EDITOR_DEFAULT_VALUE
@@ -393,6 +414,7 @@ function SettingsRouteView() {
                       {preferredEditorOptions.map((editor) => (
                         <SelectItem key={editor.id} value={editor.id}>
                           {editor.label}
+                          {availableEditorIds.has(editor.id) ? "" : " (not detected)"}
                         </SelectItem>
                       ))}
                     </SelectPopup>
@@ -403,17 +425,28 @@ function SettingsRouteView() {
                   <span className="text-xs font-medium text-foreground">
                     Custom preferred editor executable path
                   </span>
-                  <Input
-                    id="preferred-editor-executable-path"
-                    value={settings.preferredEditorExecutablePath}
-                    onChange={(event) =>
-                      updateSettings({ preferredEditorExecutablePath: event.target.value })
-                    }
-                    placeholder={preferredEditorPathPlaceholder}
-                    spellCheck={false}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="preferred-editor-executable-path"
+                      value={settings.preferredEditorExecutablePath}
+                      onChange={(event) =>
+                        updateSettings({
+                          preferredEditorExecutablePath: event.target.value,
+                          ...resolveCustomEditorPreferenceForPathEdit(),
+                        })
+                      }
+                      placeholder={preferredEditorPathPlaceholder}
+                      spellCheck={false}
+                    />
+                    {editorPathSaved && (
+                      <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 text-xs text-success animate-in fade-in">
+                        <CheckIcon className="size-3" />
+                        <span>Saved</span>
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-muted-foreground">
-                    Used only when your preferred editor is unavailable. Absolute paths only.
+                    Auto-saved. Used when your preferred editor is not detected.
                   </span>
                 </label>
 
@@ -431,6 +464,8 @@ function SettingsRouteView() {
                 ) : null}
 
                 {(settings.preferredEditor !== defaults.preferredEditor ||
+                  settings.useCustomEditorPath !== defaults.useCustomEditorPath ||
+                  settings.useCustomEditorPathTouched !== defaults.useCustomEditorPathTouched ||
                   settings.preferredEditorExecutablePath !==
                     defaults.preferredEditorExecutablePath) && (
                   <div className="flex justify-end">
@@ -441,6 +476,8 @@ function SettingsRouteView() {
                         updateSettings({
                           preferredEditor: defaults.preferredEditor,
                           preferredEditorExecutablePath: defaults.preferredEditorExecutablePath,
+                          useCustomEditorPath: defaults.useCustomEditorPath,
+                          useCustomEditorPathTouched: defaults.useCustomEditorPathTouched,
                         })
                       }
                     >
