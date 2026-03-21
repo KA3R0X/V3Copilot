@@ -125,7 +125,7 @@ it.layer(testLayer)("server CLI command", (it) => {
         assert.equal(resolvedConfig?.port, 4010);
         assert.equal(resolvedConfig?.host, "0.0.0.0");
         assert.equal(resolvedConfig?.baseDir, "/tmp/t3-cli-home");
-      assert.equal(resolvedConfig?.stateDir, "/tmp/t3-cli-home/dev");
+        assert.equal(resolvedConfig?.stateDir, "/tmp/t3-cli-home/dev");
         assert.equal(resolvedConfig?.devUrl?.toString(), "http://127.0.0.1:5173/");
         assert.equal(resolvedConfig?.noBrowser, true);
         assert.equal(resolvedConfig?.authToken, "auth-secret");

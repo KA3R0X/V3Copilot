@@ -90,7 +90,6 @@ describe("resolveModelSlug", () => {
     }
   });
 
-
   it("supports provider-aware resolution", () => {
     expect(resolveModelSlugForProvider("claudeAgent", undefined)).toBe(
       DEFAULT_MODEL_BY_PROVIDER.claudeAgent,

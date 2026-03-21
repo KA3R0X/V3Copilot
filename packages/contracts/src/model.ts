@@ -143,4 +143,4 @@ export const DEFAULT_REASONING_EFFORT_BY_PROVIDER = {
   codex: "high",
   copilot: null,
   claudeAgent: "high",
-} as const satisfies Record<ProviderKind, ProviderReasoningEffort>;
+} as const satisfies Record<ProviderKind, ProviderReasoningEffort | null>;

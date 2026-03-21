@@ -500,15 +500,14 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   const command = extractToolCommand(payload);
   const changedFiles = extractChangedFiles(payload);
   const title = extractToolTitle(payload);
-      const status = extractToolStatus(payload);
-      const { output, exitCode } = extractToolOutputEnvelope(payload);
+  const status = extractToolStatus(payload);
+  const { output, exitCode } = extractToolOutputEnvelope(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,
     label: activity.summary,
     tone: activity.tone === "approval" ? "info" : activity.tone,
     activityKind: activity.kind,
-        activityKind: activity.kind,
   };
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
@@ -521,21 +520,21 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (command) {
     entry.command = command;
   }
-      if (output) {
-        entry.output = output;
-      }
-      if (exitCode !== undefined) {
-        entry.exitCode = exitCode;
-      }
+  if (output) {
+    entry.output = output;
+  }
+  if (exitCode !== undefined) {
+    entry.exitCode = exitCode;
+  }
   if (changedFiles.length > 0) {
     entry.changedFiles = changedFiles;
   }
   if (title) {
     entry.toolTitle = title;
   }
-      if (status) {
-        entry.toolStatus = status;
-      }
+  if (status) {
+    entry.toolStatus = status;
+  }
   if (itemType) {
     entry.itemType = itemType;
   }

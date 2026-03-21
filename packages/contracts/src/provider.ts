@@ -13,7 +13,6 @@ import {
   ChatAttachment,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
-  ProviderStartOptions,
   ProviderApprovalDecision,
   ProviderApprovalPolicy,
   ProviderInteractionMode,

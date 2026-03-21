@@ -66,7 +66,6 @@ const fakeClaudeAdapter: ClaudeAdapterShape = {
 const layer = it.layer(
   Layer.mergeAll(
     Layer.provide(
-
       ProviderAdapterRegistryLive,
       Layer.mergeAll(
         Layer.succeed(CodexAdapter, fakeCodexAdapter),
