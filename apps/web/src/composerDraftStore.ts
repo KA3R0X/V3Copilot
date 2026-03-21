@@ -1,5 +1,6 @@
 import {
   CODEX_REASONING_EFFORT_OPTIONS,
+  DEFAULT_REASONING_EFFORT_BY_PROVIDER,
   type ClaudeCodeEffort,
   type CodexReasoningEffort,
   ProjectId,
@@ -359,6 +360,10 @@ function normalizeProviderModelOptions(
     candidate?.claudeAgent && typeof candidate.claudeAgent === "object"
       ? (candidate.claudeAgent as Record<string, unknown>)
       : null;
+  const copilotCandidate =
+    candidate?.copilot && typeof candidate.copilot === "object"
+      ? (candidate.copilot as Record<string, unknown>)
+      : null;
 
   const codexReasoningEffort: CodexReasoningEffort | undefined =
     codexCandidate?.reasoningEffort === "low" ||
@@ -386,6 +391,20 @@ function normalizeProviderModelOptions(
       : codexFastMode
         ? { fastMode: true }
         : undefined;
+  const copilotReasoningEffort: CodexReasoningEffort | undefined =
+    copilotCandidate?.reasoningEffort === "low" ||
+    copilotCandidate?.reasoningEffort === "medium" ||
+    copilotCandidate?.reasoningEffort === "high" ||
+    copilotCandidate?.reasoningEffort === "xhigh"
+      ? copilotCandidate.reasoningEffort
+      : undefined;
+  const copilot =
+    copilotReasoningEffort &&
+    copilotReasoningEffort !== DEFAULT_REASONING_EFFORT_BY_PROVIDER.copilot
+      ? {
+          reasoningEffort: copilotReasoningEffort,
+        }
+      : undefined;
 
   const claudeThinking = claudeCandidate?.thinking === false ? false : undefined;
   const claudeEffort: ClaudeCodeEffort | undefined =
@@ -410,11 +429,12 @@ function normalizeProviderModelOptions(
         }
       : undefined;
 
-  if (!codex && !claude) {
+  if (!codex && !copilot && !claude) {
     return null;
   }
   return {
     ...(codex ? { codex } : {}),
+    ...(copilot ? { copilot } : {}),
     ...(claude ? { claudeAgent: claude } : {}),
   };
 }

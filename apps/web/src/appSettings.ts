@@ -12,7 +12,32 @@ export const DEFAULT_TIMESTAMP_FORMAT: TimestampFormat = "locale";
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   copilot: new Set(getModelOptions("copilot").map((option) => option.slug)),
+  claudeAgent: new Set(getModelOptions("claudeAgent").map((option) => option.slug)),
 };
+
+export const MODEL_PROVIDER_SETTINGS = [
+  {
+    provider: "codex",
+    title: "Codex",
+    description: "Codex provider models.",
+    placeholder: "gpt-4o",
+    example: "gpt-4o",
+  },
+  {
+    provider: "copilot",
+    title: "GitHub Copilot",
+    description: "Copilot provider models.",
+    placeholder: "gpt-4o",
+    example: "gpt-4o",
+  },
+  {
+    provider: "claudeAgent",
+    title: "Claude Agent",
+    description: "Claude provider models.",
+    placeholder: "claude-3-5-sonnet-latest",
+    example: "claude-3-5-sonnet-latest",
+  },
+] as const;
 
 const AppSettingsSchema = Schema.Struct({
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
@@ -41,6 +66,9 @@ const AppSettingsSchema = Schema.Struct({
     Schema.withConstructorDefault(() => Option.some([])),
   ),
   customCopilotModels: Schema.Array(Schema.String).pipe(
+    Schema.withConstructorDefault(() => Option.some([])),
+  ),
+  customClaudeAgentModels: Schema.Array(Schema.String).pipe(
     Schema.withConstructorDefault(() => Option.some([])),
   ),
   preferredEditor: Schema.NullOr(EditorId).pipe(
@@ -110,8 +138,54 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     ...settings,
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
     customCopilotModels: normalizeCustomModelSlugs(settings.customCopilotModels, "copilot"),
+    customClaudeAgentModels: normalizeCustomModelSlugs(
+      settings.customClaudeAgentModels,
+      "claudeAgent",
+    ),
     preferredEditorExecutablePath: settings.preferredEditorExecutablePath.trim(),
   };
+}
+
+export function getCustomModelsForProvider(
+  settings: AppSettings,
+  provider: ProviderKind,
+): readonly string[] {
+  switch (provider) {
+    case "codex":
+      return settings.customCodexModels;
+    case "copilot":
+      return settings.customCopilotModels;
+    case "claudeAgent":
+      return settings.customClaudeAgentModels;
+  }
+}
+
+export function getDefaultCustomModelsForProvider(
+  defaults: AppSettings,
+  provider: ProviderKind,
+): readonly string[] {
+  switch (provider) {
+    case "codex":
+      return defaults.customCodexModels;
+    case "copilot":
+      return defaults.customCopilotModels;
+    case "claudeAgent":
+      return defaults.customClaudeAgentModels;
+  }
+}
+
+export function patchCustomModels(
+  provider: ProviderKind,
+  models: readonly string[],
+): Partial<AppSettings> {
+  switch (provider) {
+    case "codex":
+      return { customCodexModels: models };
+    case "copilot":
+      return { customCopilotModels: models };
+    case "claudeAgent":
+      return { customClaudeAgentModels: models };
+  }
 }
 
 export function getAppModelOptions(

@@ -104,6 +104,15 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
       <ClaudeTraitsPicker threadId={threadId} model={model} onPromptChange={onPromptChange} />
     ),
   },
+  copilot: {
+    getState: () => ({
+      provider: "copilot",
+      promptEffort: null,
+      modelOptionsForDispatch: undefined,
+    }),
+    renderTraitsMenuContent: () => null,
+    renderTraitsPicker: () => null,
+  },
 };
 
 export function getComposerProviderState(input: ComposerProviderStateInput): ComposerProviderState {
