@@ -3,9 +3,7 @@ import {
   ChevronRightIcon,
   FolderIcon,
   GitPullRequestIcon,
-  PlugIcon,
   PlusIcon,
-  PuzzleIcon,
   RocketIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -29,29 +27,27 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  DEFAULT_RUNTIME_MODE,
   DEFAULT_MODEL_BY_PROVIDER,
   type DesktopUpdateState,
-  type ModelSlug,
-  type ProviderKind,
   ProjectId,
   ThreadId,
   type GitStatusResult,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
-import { isMacPlatform, newCommandId, newProjectId, newThreadId } from "../lib/utils";
+import { isLinuxPlatform, isMacPlatform, newCommandId, newProjectId } from "../lib/utils";
 import { useStore } from "../store";
-import { isChatNewLocalShortcut, isChatNewShortcut, shortcutLabelForCommand } from "../keybindings";
+import { shortcutLabelForCommand } from "../keybindings";
 import { derivePendingApprovals, derivePendingUserInputs } from "../session-logic";
 import { gitRemoveWorktreeMutationOptions, gitStatusQueryOptions } from "../lib/gitReactQuery";
 import { serverConfigQueryOptions } from "../lib/serverReactQuery";
 import { readNativeApi } from "../nativeApi";
-import { type DraftThreadEnvMode, useComposerDraftStore } from "../composerDraftStore";
+import { useComposerDraftStore } from "../composerDraftStore";
+import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { toastManager } from "./ui/toast";
 import {
@@ -88,7 +84,9 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { isNonEmpty as isNonEmptyString } from "effect/String";
 import {
+  resolveProjectStatusIndicator,
   resolveSidebarNewThreadEnvMode,
+  resolveThreadRowClassName,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
 } from "./Sidebar.logic";
@@ -261,17 +259,11 @@ export default function Sidebar() {
   const toggleProject = useStore((store) => store.toggleProject);
   const reorderProjects = useStore((store) => store.reorderProjects);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearThreadDraft);
-  const draftByThreadId = useComposerDraftStore((store) => store.draftsByThreadId);
   const getDraftThreadByProjectId = useComposerDraftStore(
     (store) => store.getDraftThreadByProjectId,
   );
-  const getDraftThread = useComposerDraftStore((store) => store.getDraftThread);
   const terminalStateByThreadId = useTerminalStateStore((state) => state.terminalStateByThreadId);
   const clearTerminalState = useTerminalStateStore((state) => state.clearTerminalState);
-  const setProjectDraftThreadId = useComposerDraftStore((store) => store.setProjectDraftThreadId);
-  const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
-  const setDraftProvider = useComposerDraftStore((store) => store.setProvider);
-  const setDraftModel = useComposerDraftStore((store) => store.setModel);
   const clearProjectDraftThreadId = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadId,
   );
@@ -279,9 +271,9 @@ export default function Sidebar() {
     (store) => store.clearProjectDraftThreadById,
   );
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isOnSettings = pathname === "/settings";
+  const isOnSettings = useLocation({ select: (loc) => loc.pathname === "/settings" });
   const { settings: appSettings } = useAppSettings();
+  const { handleNewThread } = useHandleNewThread();
   const routeThreadId = useParams({
     strict: false,
     select: (params) => (params.threadId ? ThreadId.makeUnsafe(params.threadId) : null),
@@ -314,7 +306,8 @@ export default function Sidebar() {
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
-  const shouldBrowseForProjectImmediately = isElectron;
+  const isLinuxDesktop = isElectron && isLinuxPlatform(navigator.platform);
+  const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop;
   const shouldShowProjectPathEntry = addingProject && !shouldBrowseForProjectImmediately;
   const projectCwdById = useMemo(
     () => new Map(projects.map((project) => [project.id, project.cwd] as const)),
@@ -389,124 +382,6 @@ export default function Sidebar() {
       });
     });
   }, []);
-
-  const handleNewThread = useCallback(
-    (
-      projectId: ProjectId,
-      options?: {
-        branch?: string | null;
-        worktreePath?: string | null;
-        envMode?: DraftThreadEnvMode;
-        provider?: ProviderKind | null;
-        model?: ModelSlug | null;
-      },
-    ): Promise<void> => {
-      const activeThread = routeThreadId
-        ? (threads.find((thread) => thread.id === routeThreadId) ?? null)
-        : null;
-      const activeDraftState = routeThreadId ? (draftByThreadId[routeThreadId] ?? null) : null;
-      const activeDraftThread = routeThreadId ? getDraftThread(routeThreadId) : null;
-      const sourceProjectId = activeThread?.projectId ?? activeDraftThread?.projectId ?? null;
-      const shouldSeedFromActiveContext = sourceProjectId === projectId;
-      const nextProvider =
-        options?.provider !== undefined
-          ? (options.provider ?? null)
-          : shouldSeedFromActiveContext
-            ? (activeDraftState?.provider ?? activeThread?.session?.provider ?? null)
-            : null;
-      const nextModel =
-        options?.model !== undefined
-          ? (options.model ?? null)
-          : shouldSeedFromActiveContext
-            ? (activeDraftState?.model ?? activeThread?.model ?? null)
-            : null;
-      const hasBranchOption = options?.branch !== undefined;
-      const hasWorktreePathOption = options?.worktreePath !== undefined;
-      const hasEnvModeOption = options?.envMode !== undefined;
-      const hasProviderOption = nextProvider !== null;
-      const hasModelOption = nextModel !== null;
-      const storedDraftThread = getDraftThreadByProjectId(projectId);
-      if (storedDraftThread) {
-        return (async () => {
-          if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
-            setDraftThreadContext(storedDraftThread.threadId, {
-              ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
-              ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
-              ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
-            });
-          }
-          if (hasProviderOption) {
-            setDraftProvider(storedDraftThread.threadId, nextProvider);
-          }
-          if (hasModelOption) {
-            setDraftModel(storedDraftThread.threadId, nextModel, nextProvider);
-          }
-          setProjectDraftThreadId(projectId, storedDraftThread.threadId);
-          if (routeThreadId === storedDraftThread.threadId) {
-            return;
-          }
-          await navigate({
-            to: "/$threadId",
-            params: { threadId: storedDraftThread.threadId },
-          });
-        })();
-      }
-      clearProjectDraftThreadId(projectId);
-
-      if (activeDraftThread && routeThreadId && activeDraftThread.projectId === projectId) {
-        if (hasBranchOption || hasWorktreePathOption || hasEnvModeOption) {
-          setDraftThreadContext(routeThreadId, {
-            ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
-            ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
-            ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
-          });
-        }
-        if (hasProviderOption) {
-          setDraftProvider(routeThreadId, nextProvider);
-        }
-        if (hasModelOption) {
-          setDraftModel(routeThreadId, nextModel, nextProvider);
-        }
-        setProjectDraftThreadId(projectId, routeThreadId);
-        return Promise.resolve();
-      }
-      const threadId = newThreadId();
-      const createdAt = new Date().toISOString();
-      return (async () => {
-        setProjectDraftThreadId(projectId, threadId, {
-          createdAt,
-          branch: options?.branch ?? null,
-          worktreePath: options?.worktreePath ?? null,
-          envMode: options?.envMode ?? "local",
-          runtimeMode: DEFAULT_RUNTIME_MODE,
-        });
-        if (hasProviderOption) {
-          setDraftProvider(threadId, nextProvider);
-        }
-        if (hasModelOption) {
-          setDraftModel(threadId, nextModel, nextProvider);
-        }
-
-        await navigate({
-          to: "/$threadId",
-          params: { threadId },
-        });
-      })();
-    },
-    [
-      clearProjectDraftThreadId,
-      draftByThreadId,
-      getDraftThreadByProjectId,
-      navigate,
-      getDraftThread,
-      routeThreadId,
-      setDraftModel,
-      setDraftThreadContext,
-      setDraftProvider,
-      setProjectDraftThreadId,
-      threads,
-    ],
-  );
 
   const focusMostRecentThreadForProject = useCallback(
     (projectId: ProjectId) => {
@@ -989,7 +864,7 @@ export default function Sidebar() {
       const api = readNativeApi();
       if (!api) return;
       const clicked = await api.contextMenu.show(
-        [{ id: "delete", label: "Delete", destructive: true }],
+        [{ id: "delete", label: "Remove project", destructive: true }],
         position,
       );
       if (clicked !== "delete") return;
@@ -1002,14 +877,12 @@ export default function Sidebar() {
         toastManager.add({
           type: "warning",
           title: "Project is not empty",
-          description: "Delete all threads in this project before deleting it.",
+          description: "Delete all threads in this project before removing it.",
         });
         return;
       }
 
-      const confirmed = await api.dialogs.confirm(
-        [`Delete project "${project.name}"?`, "This action cannot be undone."].join("\n"),
-      );
+      const confirmed = await api.dialogs.confirm(`Remove project "${project.name}"?`);
       if (!confirmed) return;
 
       try {
@@ -1024,11 +897,11 @@ export default function Sidebar() {
           projectId,
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error deleting project.";
+        const message = error instanceof Error ? error.message : "Unknown error removing project.";
         console.error("Failed to remove project", { projectId, error });
         toastManager.add({
           type: "error",
-          title: `Failed to delete "${project.name}"`,
+          title: `Failed to remove "${project.name}"`,
           description: message,
         });
       }
@@ -1117,37 +990,6 @@ export default function Sidebar() {
   );
 
   useEffect(() => {
-    const onWindowKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && selectedThreadIds.size > 0) {
-        event.preventDefault();
-        clearSelection();
-        return;
-      }
-
-      const activeThread = routeThreadId
-        ? threads.find((thread) => thread.id === routeThreadId)
-        : undefined;
-      const activeDraftThread = routeThreadId ? getDraftThread(routeThreadId) : null;
-      if (isChatNewLocalShortcut(event, keybindings)) {
-        const projectId =
-          activeThread?.projectId ?? activeDraftThread?.projectId ?? projects[0]?.id;
-        if (!projectId) return;
-        event.preventDefault();
-        void handleNewThread(projectId);
-        return;
-      }
-
-      if (!isChatNewShortcut(event, keybindings)) return;
-      const projectId = activeThread?.projectId ?? activeDraftThread?.projectId ?? projects[0]?.id;
-      if (!projectId) return;
-      event.preventDefault();
-      void handleNewThread(projectId, {
-        branch: activeThread?.branch ?? activeDraftThread?.branch ?? null,
-        worktreePath: activeThread?.worktreePath ?? activeDraftThread?.worktreePath ?? null,
-        envMode: activeDraftThread?.envMode ?? (activeThread?.worktreePath ? "worktree" : "local"),
-      });
-    };
-
     const onMouseDown = (event: globalThis.MouseEvent) => {
       if (selectedThreadIds.size === 0) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1155,22 +997,11 @@ export default function Sidebar() {
       clearSelection();
     };
 
-    window.addEventListener("keydown", onWindowKeyDown);
     window.addEventListener("mousedown", onMouseDown);
     return () => {
-      window.removeEventListener("keydown", onWindowKeyDown);
       window.removeEventListener("mousedown", onMouseDown);
     };
-  }, [
-    clearSelection,
-    getDraftThread,
-    handleNewThread,
-    keybindings,
-    projects,
-    routeThreadId,
-    selectedThreadIds.size,
-    threads,
-  ]);
+  }, [clearSelection, selectedThreadIds.size]);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -1321,7 +1152,7 @@ export default function Sidebar() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <div className="flex min-w-0 flex-1 items-center gap-1 mt-1.5 ml-1 cursor-pointer">
+            <div className="flex min-w-0 flex-1 items-center gap-1 ml-1 cursor-pointer">
               <T3Wordmark />
               <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
                 Code
@@ -1372,36 +1203,6 @@ export default function Sidebar() {
         </SidebarHeader>
       )}
 
-      <div className="px-2 py-2">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              render={<button type="button" />}
-              isActive={pathname === "/skills"}
-              size="sm"
-              className="cursor-pointer gap-2 px-2 py-1.5 font-medium text-muted-foreground text-xs hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground"
-              onClick={() => void navigate({ to: "/skills" })}
-            >
-              <PuzzleIcon className="size-3.5 shrink-0" />
-              <span>Skills</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              render={<button type="button" />}
-              isActive={pathname === "/mcp"}
-              size="sm"
-              className="cursor-pointer gap-2 px-2 py-1.5 font-medium text-muted-foreground text-xs hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground"
-              onClick={() => void navigate({ to: "/mcp" })}
-            >
-              <PlugIcon className="size-3.5 shrink-0" />
-              <span>MCP Servers</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </div>
-      <SidebarSeparator />
-
       <SidebarContent className="gap-0">
         {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
           <SidebarGroup className="px-2 pt-2 pb-0">
@@ -1436,9 +1237,9 @@ export default function Sidebar() {
                 render={
                   <button
                     type="button"
-                    aria-label="Add project"
+                    aria-label={shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
                     aria-pressed={shouldShowProjectPathEntry}
-                    className="inline-flex size-5 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                    className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                     onClick={handleStartAddProject}
                   />
                 }
@@ -1449,7 +1250,9 @@ export default function Sidebar() {
                   }`}
                 />
               </TooltipTrigger>
-              <TooltipPopup side="right">Add project</TooltipPopup>
+              <TooltipPopup side="right">
+                {shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
+              </TooltipPopup>
             </Tooltip>
           </div>
 
@@ -1540,13 +1343,22 @@ export default function Sidebar() {
                       if (byDate !== 0) return byDate;
                       return b.id.localeCompare(a.id);
                     });
+                  const projectStatus = resolveProjectStatusIndicator(
+                    projectThreads.map((thread) =>
+                      resolveThreadStatusPill({
+                        thread,
+                        hasPendingApprovals: derivePendingApprovals(thread.activities).length > 0,
+                        hasPendingUserInput: derivePendingUserInputs(thread.activities).length > 0,
+                      }),
+                    ),
+                  );
                   const isThreadListExpanded = expandedThreadListsByProject.has(project.id);
                   const hasHiddenThreads = projectThreads.length > THREAD_PREVIEW_LIMIT;
                   const visibleThreads =
                     hasHiddenThreads && !isThreadListExpanded
                       ? projectThreads.slice(0, THREAD_PREVIEW_LIMIT)
                       : projectThreads;
-                  const orderedProjectThreadIds = projectThreads.map((t) => t.id);
+                  const orderedProjectThreadIds = projectThreads.map((thread) => thread.id);
 
                   return (
                     <SortableProjectItem key={project.id} projectId={project.id}>
@@ -1569,11 +1381,28 @@ export default function Sidebar() {
                                 });
                               }}
                             >
-                              <ChevronRightIcon
-                                className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${
-                                  project.expanded ? "rotate-90" : ""
-                                }`}
-                              />
+                              {!project.expanded && projectStatus ? (
+                                <span
+                                  aria-hidden="true"
+                                  title={projectStatus.label}
+                                  className={`-ml-0.5 relative inline-flex size-3.5 shrink-0 items-center justify-center ${projectStatus.colorClass}`}
+                                >
+                                  <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/project-header:opacity-0">
+                                    <span
+                                      className={`size-[9px] rounded-full ${projectStatus.dotClass} ${
+                                        projectStatus.pulse ? "animate-pulse" : ""
+                                      }`}
+                                    />
+                                  </span>
+                                  <ChevronRightIcon className="absolute inset-0 m-auto size-3.5 text-muted-foreground/70 opacity-0 transition-opacity duration-150 group-hover/project-header:opacity-100" />
+                                </span>
+                              ) : (
+                                <ChevronRightIcon
+                                  className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${
+                                    project.expanded ? "rotate-90" : ""
+                                  }`}
+                                />
+                              )}
                               <ProjectFavicon cwd={project.cwd} />
                               <span className="flex-1 truncate text-xs font-medium text-foreground/90">
                                 {project.name}
@@ -1645,13 +1474,10 @@ export default function Sidebar() {
                                       render={<div role="button" tabIndex={0} />}
                                       size="sm"
                                       isActive={isActive}
-                                      className={`h-7 w-full translate-x-0 cursor-default justify-start px-2 text-left select-none hover:bg-accent hover:text-foreground focus-visible:ring-0 ${
-                                        isSelected
-                                          ? "bg-primary/15 text-foreground dark:bg-primary/10"
-                                          : isActive
-                                            ? "bg-accent/85 text-foreground font-medium dark:bg-accent/55"
-                                            : "text-muted-foreground"
-                                      }`}
+                                      className={resolveThreadRowClassName({
+                                        isActive,
+                                        isSelected,
+                                      })}
                                       onClick={(event) => {
                                         handleThreadClick(
                                           event,
@@ -1789,7 +1615,7 @@ export default function Sidebar() {
                                         <span
                                           className={`text-[10px] ${
                                             isHighlighted
-                                              ? "text-foreground/65"
+                                              ? "text-foreground/72 dark:text-foreground/82"
                                               : "text-muted-foreground/40"
                                           }`}
                                         >

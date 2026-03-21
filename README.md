@@ -1,47 +1,28 @@
-# V3 Copilot
+# T3 Code
 
-This repo is a V3 Copilot fork of T3 Code that stays up to date with upstream and adds GitHub Copilot support.
-
-V3 Copilot is a minimal web GUI for coding agents. This fork supports both Codex and GitHub Copilot.
-
-## Preview
-
-<img width="1792" height="1001" alt="2026-03-09_02-36-10" src="https://github.com/user-attachments/assets/2d2bb48f-1485-44e0-804e-468f4111d376" />
-<img width="1912" height="1178" alt="image" src="https://github.com/user-attachments/assets/38cd4bb2-b27e-47e6-9565-d26c4c97fdd3" />
-
-## This fork
-
-- tracks upstream `pingdotgg/t3code`
-- adds GitHub Copilot provider support
-- keeps Codex support working too
+T3 Code is a minimal web GUI for coding agents (currently Codex and Claude, more coming soon).
 
 ## How to use
 
 > [!WARNING]
-> You need to have either [Codex CLI](https://github.com/openai/codex) or GitHub Copilot available and authorized for V3 Copilot to work.
-> When you run V3 Copilot from source, `bun install` is enough for Copilot support because `apps/server` already depends on `@github/copilot` and `@github/copilot-sdk`.
-> If you want to use GitHub Copilot CLI directly in a terminal, follow GitHub's [Copilot CLI installation guide](https://docs.github.com/copilot/how-tos/set-up/install-copilot-cli). If Copilot comes from an organization or enterprise, the Copilot CLI policy must be enabled there.
-
-## Copilot setup
-
-For the app itself, there is no separate global Copilot install step when running from source:
+> You need to have [Codex CLI](https://github.com/openai/codex) installed and authorized for T3 Code to work.
 
 ```bash
-bun install
+npx t3
 ```
 
-If you are using Copilot CLI directly in your terminal, install it with GitHub's docs and sign in from a trusted folder. On first launch, Copilot will prompt you to use `/login` if you are not already authenticated.
+You can also just install the desktop app. It's cooler.
 
-The easiest way to use this fork is the desktop app.
+Install the [desktop app from the Releases page](https://github.com/pingdotgg/t3code/releases)
 
-- Download it from the [releases page]
-- Launch the app and choose either `Codex` or `GitHub Copilot`
+## Some notes
 
-You can also run it from source:
+We are very very early in this project. Expect bugs.
 
-```bash
-bun install
-bun run dev
-```
+We are not accepting contributions yet.
 
-Open the app, connect your provider, and start chatting.
+## If you REALLY want to contribute still.... read this first
+
+Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or PR.
+
+Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).

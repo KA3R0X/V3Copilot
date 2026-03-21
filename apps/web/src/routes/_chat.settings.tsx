@@ -61,6 +61,13 @@ const MODEL_PROVIDER_SETTINGS: Array<{
     placeholder: "your-codex-model-slug",
     example: "gpt-6.7-codex-ultra-preview",
   },
+  {
+    provider: "claudeAgent",
+    title: "Claude",
+    description: "Save additional Claude model slugs for the picker and `/model` command.",
+    placeholder: "your-claude-model-slug",
+    example: "claude-sonnet-5-0",
+  },
 ] as const;
 
 const TIMESTAMP_FORMAT_LABELS = {
@@ -84,6 +91,8 @@ function getCustomModelsForProvider(
   provider: ProviderKind,
 ) {
   switch (provider) {
+    case "claudeAgent":
+      return settings.customClaudeModels;
     case "codex":
     default:
       return settings.customCodexModels;
@@ -95,6 +104,8 @@ function getDefaultCustomModelsForProvider(
   provider: ProviderKind,
 ) {
   switch (provider) {
+    case "claudeAgent":
+      return defaults.customClaudeModels;
     case "codex":
     default:
       return defaults.customCodexModels;
@@ -103,6 +114,8 @@ function getDefaultCustomModelsForProvider(
 
 function patchCustomModels(provider: ProviderKind, models: string[]) {
   switch (provider) {
+    case "claudeAgent":
+      return { customClaudeModels: models };
     case "codex":
     default:
       return { customCodexModels: models };
@@ -119,6 +132,7 @@ function SettingsRouteView() {
     Record<ProviderKind, string>
   >({
     codex: "",
+    claudeAgent: "",
     copilot: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<

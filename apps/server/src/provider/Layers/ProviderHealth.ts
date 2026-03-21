@@ -11,13 +11,10 @@
 import * as OS from "node:os";
 import type {
   ServerProviderAuthStatus,
-  ServerProviderModel,
-  ServerProviderQuotaSnapshot,
   ServerProviderStatus,
   ServerProviderStatusState,
 } from "@t3tools/contracts";
-import { CopilotClient, type ModelInfo } from "@github/copilot-sdk";
-import { Effect, Fiber, FileSystem, Layer, Option, Path, Result, Stream } from "effect";
+import { Array, Effect, Fiber, FileSystem, Layer, Option, Path, Result, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
@@ -26,15 +23,10 @@ import {
   parseCodexCliVersion,
 } from "../codexCliVersion";
 import { ProviderHealth, type ProviderHealthShape } from "../Services/ProviderHealth";
-import { resolveBundledCopilotCliPath } from "./copilotCliPath.ts";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 const CODEX_PROVIDER = "codex" as const;
-const COPILOT_PROVIDER = "copilot" as const;
-
-export function getCopilotHealthCheckTimeoutMs(platform: string = process.platform): number {
-  return platform === "win32" ? 10_000 : DEFAULT_TIMEOUT_MS;
-}
+const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
 
 // ── Pure helpers ────────────────────────────────────────────────────
 
@@ -42,76 +34,6 @@ export interface CommandResult {
   readonly stdout: string;
   readonly stderr: string;
   readonly code: number;
-}
-
-interface CopilotHealthProbeError {
-  readonly _tag: "CopilotHealthProbeError";
-  readonly cause: unknown;
-}
-
-const COPILOT_QUOTA_PRIORITY = ["premium_interactions", "chat", "completions"] as const;
-
-export function mapCopilotModel(model: ModelInfo): ServerProviderModel {
-  return {
-    id: model.id,
-    name: model.name,
-    supportsReasoningEffort: (model.supportedReasoningEfforts?.length ?? 0) > 0,
-    ...(model.supportedReasoningEfforts && model.supportedReasoningEfforts.length > 0
-      ? { supportedReasoningEfforts: [...model.supportedReasoningEfforts] }
-      : {}),
-    ...(model.defaultReasoningEffort
-      ? { defaultReasoningEffort: model.defaultReasoningEffort }
-      : {}),
-    ...(typeof model.billing?.multiplier === "number"
-      ? { billingMultiplier: model.billing.multiplier }
-      : {}),
-  } satisfies ServerProviderModel;
-}
-
-interface CopilotQuotaSnapshotInfo {
-  readonly entitlementRequests: number;
-  readonly usedRequests: number;
-  readonly remainingPercentage: number;
-  readonly overage: number;
-  readonly overageAllowedWithExhaustedQuota: boolean;
-  readonly resetDate?: string;
-}
-
-function compareCopilotQuotaKeys(left: string, right: string): number {
-  const leftPriority = COPILOT_QUOTA_PRIORITY.indexOf(
-    left as (typeof COPILOT_QUOTA_PRIORITY)[number],
-  );
-  const rightPriority = COPILOT_QUOTA_PRIORITY.indexOf(
-    right as (typeof COPILOT_QUOTA_PRIORITY)[number],
-  );
-  const normalizedLeftPriority = leftPriority === -1 ? Number.POSITIVE_INFINITY : leftPriority;
-  const normalizedRightPriority = rightPriority === -1 ? Number.POSITIVE_INFINITY : rightPriority;
-  return normalizedLeftPriority - normalizedRightPriority || left.localeCompare(right);
-}
-
-export function mapCopilotQuotaSnapshots(
-  quotaSnapshots: Record<string, CopilotQuotaSnapshotInfo> | undefined,
-): ReadonlyArray<ServerProviderQuotaSnapshot> {
-  if (!quotaSnapshots) return [];
-
-  return Object.entries(quotaSnapshots)
-    .toSorted(([leftKey], [rightKey]) => compareCopilotQuotaKeys(leftKey, rightKey))
-    .map(([key, snapshot]) => {
-      const entitlementRequests = Math.max(0, Math.trunc(snapshot.entitlementRequests));
-      const usedRequests = Math.max(0, Math.trunc(snapshot.usedRequests));
-      const mapped: ServerProviderQuotaSnapshot = {
-        key,
-        entitlementRequests,
-        usedRequests,
-        remainingRequests: Math.max(0, entitlementRequests - usedRequests),
-        remainingPercentage: snapshot.remainingPercentage,
-        overage: Math.max(0, Math.trunc(snapshot.overage)),
-        overageAllowedWithExhaustedQuota: snapshot.overageAllowedWithExhaustedQuota,
-      };
-      return snapshot.resetDate
-        ? Object.assign({}, mapped, { resetDate: snapshot.resetDate })
-        : mapped;
-    });
 }
 
 function nonEmptyTrimmed(value: string | undefined): string | undefined {
@@ -123,12 +45,7 @@ function nonEmptyTrimmed(value: string | undefined): string | undefined {
 function isCommandMissingCause(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const lower = error.message.toLowerCase();
-  return (
-    lower.includes("command not found: codex") ||
-    lower.includes("spawn codex enoent") ||
-    lower.includes("enoent") ||
-    lower.includes("notfound")
-  );
+  return lower.includes("enoent") || lower.includes("notfound");
 }
 
 function detailFromResult(
@@ -343,6 +260,27 @@ const runCodexCommand = (args: ReadonlyArray<string>) =>
     return { stdout, stderr, code: exitCode } satisfies CommandResult;
   }).pipe(Effect.scoped);
 
+const runClaudeCommand = (args: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const command = ChildProcess.make("claude", [...args], {
+      shell: process.platform === "win32",
+    });
+
+    const child = yield* spawner.spawn(command);
+
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        collectStreamAsString(child.stdout),
+        collectStreamAsString(child.stderr),
+        child.exitCode.pipe(Effect.map(Number)),
+      ],
+      { concurrency: "unbounded" },
+    );
+
+    return { stdout, stderr, code: exitCode } satisfies CommandResult;
+  }).pipe(Effect.scoped);
+
 // ── Health check ────────────────────────────────────────────────────
 
 export const checkCodexProviderStatus: Effect.Effect<
@@ -469,108 +407,197 @@ export const checkCodexProviderStatus: Effect.Effect<
   } satisfies ServerProviderStatus;
 });
 
-export const checkCopilotProviderStatus: Effect.Effect<ServerProviderStatus> = Effect.gen(
-  function* () {
-    const checkedAt = new Date().toISOString();
-    const probe = yield* Effect.tryPromise({
-      try: async () => {
-        const cliPath = resolveBundledCopilotCliPath();
-        const client = new CopilotClient({
-          ...(cliPath ? { cliPath } : {}),
-          logLevel: "error",
-        });
-        try {
-          await client.start();
-          const [status, authStatus] = await Promise.all([
-            client.getStatus(),
-            client.getAuthStatus().catch(() => undefined),
-          ]);
-          const [models, quota] =
-            authStatus?.isAuthenticated === true
-              ? await Promise.all([
-                  client.listModels().catch(() => undefined),
-                  client.rpc.account.getQuota().catch(() => undefined),
-                ])
-              : [undefined, undefined];
-          return { status, authStatus, models, quota };
-        } finally {
-          await client.stop().catch(() => []);
-        }
-      },
-      catch: (cause) =>
-        ({
-          _tag: "CopilotHealthProbeError",
-          cause,
-        }) satisfies CopilotHealthProbeError,
-    }).pipe(Effect.timeoutOption(getCopilotHealthCheckTimeoutMs()), Effect.result);
+// ── Claude Agent health check ───────────────────────────────────────
 
-    if (Result.isFailure(probe)) {
-      const error = probe.failure.cause;
-      return {
-        provider: COPILOT_PROVIDER,
-        status: "error" as const,
-        available: false,
-        authStatus: "unknown" as const,
-        checkedAt,
-        message:
-          error instanceof Error
-            ? `Failed to start GitHub Copilot CLI health check: ${error.message}.`
-            : "Failed to start GitHub Copilot CLI health check.",
-      };
-    }
+export function parseClaudeAuthStatusFromOutput(result: CommandResult): {
+  readonly status: ServerProviderStatusState;
+  readonly authStatus: ServerProviderAuthStatus;
+  readonly message?: string;
+} {
+  const lowerOutput = `${result.stdout}\n${result.stderr}`.toLowerCase();
 
-    if (Option.isNone(probe.success)) {
-      return {
-        provider: COPILOT_PROVIDER,
-        status: "error" as const,
-        available: false,
-        authStatus: "unknown" as const,
-        checkedAt,
-        message: "GitHub Copilot CLI health check timed out while starting the SDK client.",
-      };
-    }
-
-    const authStatus: ServerProviderAuthStatus =
-      probe.success.value.authStatus?.isAuthenticated === true
-        ? "authenticated"
-        : probe.success.value.authStatus?.isAuthenticated === false
-          ? "unauthenticated"
-          : "unknown";
-    const status: ServerProviderStatusState =
-      authStatus === "unauthenticated" ? "error" : authStatus === "unknown" ? "warning" : "ready";
-    const quotaSnapshots = mapCopilotQuotaSnapshots(probe.success.value.quota?.quotaSnapshots);
-
+  if (
+    lowerOutput.includes("unknown command") ||
+    lowerOutput.includes("unrecognized command") ||
+    lowerOutput.includes("unexpected argument")
+  ) {
     return {
-      provider: COPILOT_PROVIDER,
-      status,
-      available: true,
-      authStatus,
+      status: "warning",
+      authStatus: "unknown",
+      message:
+        "Claude Agent authentication status command is unavailable in this version of Claude.",
+    };
+  }
+
+  if (
+    lowerOutput.includes("not logged in") ||
+    lowerOutput.includes("login required") ||
+    lowerOutput.includes("authentication required") ||
+    lowerOutput.includes("run `claude login`") ||
+    lowerOutput.includes("run claude login")
+  ) {
+    return {
+      status: "error",
+      authStatus: "unauthenticated",
+      message: "Claude is not authenticated. Run `claude auth login` and try again.",
+    };
+  }
+
+  // `claude auth status` returns JSON with a `loggedIn` boolean.
+  const parsedAuth = (() => {
+    const trimmed = result.stdout.trim();
+    if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+      return { attemptedJsonParse: false as const, auth: undefined as boolean | undefined };
+    }
+    try {
+      return {
+        attemptedJsonParse: true as const,
+        auth: extractAuthBoolean(JSON.parse(trimmed)),
+      };
+    } catch {
+      return { attemptedJsonParse: false as const, auth: undefined as boolean | undefined };
+    }
+  })();
+
+  if (parsedAuth.auth === true) {
+    return { status: "ready", authStatus: "authenticated" };
+  }
+  if (parsedAuth.auth === false) {
+    return {
+      status: "error",
+      authStatus: "unauthenticated",
+      message: "Claude is not authenticated. Run `claude auth login` and try again.",
+    };
+  }
+  if (parsedAuth.attemptedJsonParse) {
+    return {
+      status: "warning",
+      authStatus: "unknown",
+      message:
+        "Could not verify Claude authentication status from JSON output (missing auth marker).",
+    };
+  }
+  if (result.code === 0) {
+    return { status: "ready", authStatus: "authenticated" };
+  }
+
+  const detail = detailFromResult(result);
+  return {
+    status: "warning",
+    authStatus: "unknown",
+    message: detail
+      ? `Could not verify Claude authentication status. ${detail}`
+      : "Could not verify Claude authentication status.",
+  };
+}
+
+export const checkClaudeProviderStatus: Effect.Effect<
+  ServerProviderStatus,
+  never,
+  ChildProcessSpawner.ChildProcessSpawner
+> = Effect.gen(function* () {
+  const checkedAt = new Date().toISOString();
+
+  // Probe 1: `claude --version` — is the CLI reachable?
+  const versionProbe = yield* runClaudeCommand(["--version"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(versionProbe)) {
+    const error = versionProbe.failure;
+    return {
+      provider: CLAUDE_AGENT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
       checkedAt,
-      ...(probe.success.value.models && probe.success.value.models.length > 0
-        ? { models: probe.success.value.models.map(mapCopilotModel) }
-        : {}),
-      ...(quotaSnapshots.length > 0 ? { quotaSnapshots } : {}),
-      ...(probe.success.value.authStatus?.statusMessage
-        ? { message: probe.success.value.authStatus.statusMessage }
-        : probe.success.value.status?.version
-          ? { message: `GitHub Copilot CLI ${probe.success.value.status.version}` }
-          : {}),
-    } satisfies ServerProviderStatus;
-  },
-);
+      message: isCommandMissingCause(error)
+        ? "Claude Agent CLI (`claude`) is not installed or not on PATH."
+        : `Failed to execute Claude Agent CLI health check: ${error instanceof Error ? error.message : String(error)}.`,
+    };
+  }
+
+  if (Option.isNone(versionProbe.success)) {
+    return {
+      provider: CLAUDE_AGENT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Claude Agent CLI is installed but failed to run. Timed out while running command.",
+    };
+  }
+
+  const version = versionProbe.success.value;
+  if (version.code !== 0) {
+    const detail = detailFromResult(version);
+    return {
+      provider: CLAUDE_AGENT_PROVIDER,
+      status: "error" as const,
+      available: false,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: detail
+        ? `Claude Agent CLI is installed but failed to run. ${detail}`
+        : "Claude Agent CLI is installed but failed to run.",
+    };
+  }
+
+  // Probe 2: `claude auth status` — is the user authenticated?
+  const authProbe = yield* runClaudeCommand(["auth", "status"]).pipe(
+    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
+    Effect.result,
+  );
+
+  if (Result.isFailure(authProbe)) {
+    const error = authProbe.failure;
+    return {
+      provider: CLAUDE_AGENT_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message:
+        error instanceof Error
+          ? `Could not verify Claude authentication status: ${error.message}.`
+          : "Could not verify Claude authentication status.",
+    };
+  }
+
+  if (Option.isNone(authProbe.success)) {
+    return {
+      provider: CLAUDE_AGENT_PROVIDER,
+      status: "warning" as const,
+      available: true,
+      authStatus: "unknown" as const,
+      checkedAt,
+      message: "Could not verify Claude authentication status. Timed out while running command.",
+    };
+  }
+
+  const parsed = parseClaudeAuthStatusFromOutput(authProbe.success.value);
+  return {
+    provider: CLAUDE_AGENT_PROVIDER,
+    status: parsed.status,
+    available: true,
+    authStatus: parsed.authStatus,
+    checkedAt,
+    ...(parsed.message ? { message: parsed.message } : {}),
+  } satisfies ServerProviderStatus;
+});
 
 // ── Layer ───────────────────────────────────────────────────────────
 
 export const ProviderHealthLive = Layer.effect(
   ProviderHealth,
   Effect.gen(function* () {
-    const providerStatusesFiber = yield* Effect.all(
-      [checkCodexProviderStatus, checkCopilotProviderStatus],
-      { concurrency: "unbounded" },
-    ).pipe(Effect.forkScoped);
+    const statusesFiber = yield* Effect.all([checkCodexProviderStatus, checkClaudeProviderStatus], {
+      concurrency: "unbounded",
+    }).pipe(Effect.forkScoped);
 
     return {
-      getStatuses: Fiber.join(providerStatusesFiber),
+      getStatuses: Fiber.join(statusesFiber),
     } satisfies ProviderHealthShape;
   }),
 );
