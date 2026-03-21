@@ -69,8 +69,8 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
   copilot: {
     getState: ({ modelOptions }) => {
       const promptEffort =
-        resolveReasoningEffortForProvider("codex", modelOptions?.copilot?.reasoningEffort) ??
-        getDefaultReasoningEffort("codex");
+        resolveReasoningEffortForProvider("copilot", modelOptions?.copilot?.reasoningEffort) ??
+        getDefaultReasoningEffort("copilot");
       const normalizedCopilotOptions = normalizeCodexModelOptions(modelOptions?.copilot);
 
       return {
@@ -81,8 +81,8 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
           : undefined,
       };
     },
-    renderTraitsMenuContent: ({ threadId }) => <CodexTraitsMenuContent threadId={threadId} />,
-    renderTraitsPicker: ({ threadId }) => <CodexTraitsPicker threadId={threadId} />,
+    renderTraitsMenuContent: () => null,
+    renderTraitsPicker: () => null,
   },
   claudeAgent: {
     getState: ({ model, prompt, modelOptions }) => {

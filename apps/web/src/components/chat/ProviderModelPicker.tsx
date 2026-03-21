@@ -94,7 +94,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const activeProvider = props.lockedProvider ?? props.provider;
-  const selectedProviderOptions = props.modelOptionsByProvider[activeProvider];
+  const selectedProviderOptions = props.modelOptionsByProvider[activeProvider] ?? [];
   const selectedModelLabel =
     selectedProviderOptions.find((option) => option.slug === props.model)?.name ?? props.model;
   const ProviderIcon = PROVIDER_ICON_BY_PROVIDER[activeProvider];
@@ -104,7 +104,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     const resolvedModel = resolveModelForProviderPicker(
       provider,
       value,
-      props.modelOptionsByProvider[provider],
+      props.modelOptionsByProvider[provider] ?? [],
     );
     if (!resolvedModel) return;
     props.onProviderModelChange(provider, resolvedModel);
@@ -162,7 +162,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               value={props.model}
               onValueChange={(value) => handleModelChange(props.lockedProvider!, value)}
             >
-              {props.modelOptionsByProvider[props.lockedProvider].map((modelOption) => (
+              {(props.modelOptionsByProvider[props.lockedProvider] ?? []).map((modelOption) => (
                 <MenuRadioItem
                   key={`${props.lockedProvider}:${modelOption.slug}`}
                   value={modelOption.slug}
@@ -195,7 +195,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                         value={props.provider === option.value ? props.model : ""}
                         onValueChange={(value) => handleModelChange(option.value, value)}
                       >
-                        {props.modelOptionsByProvider[option.value].map((modelOption) => (
+                        {(props.modelOptionsByProvider[option.value] ?? []).map((modelOption) => (
                           <MenuRadioItem
                             key={`${option.value}:${modelOption.slug}`}
                             value={modelOption.slug}

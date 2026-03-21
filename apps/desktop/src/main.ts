@@ -1332,8 +1332,10 @@ function registerIpcHandlers(): void {
       if (typeof executablePath !== "string" || typeof cwd !== "string") {
         return false;
       }
+      // Strip surrounding quotes if present (user may paste quoted paths)
+      const cleanPath = executablePath.replace(/^["']|["']$/g, "");
       try {
-        const child = ChildProcess.spawn(executablePath, [cwd], {
+        const child = ChildProcess.spawn(cleanPath, [cwd], {
           detached: true,
           stdio: "ignore",
         });

@@ -11,11 +11,14 @@ const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
     { slug: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
   ],
+  copilot: [
+    { slug: "gpt-5.4", name: "GPT-5.4" },
+    { slug: "claude-sonnet-4.6", name: "Claude Sonnet 4.6" },
+  ],
   codex: [
     { slug: "gpt-5-codex", name: "GPT-5 Codex" },
     { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
   ],
-  copilot: [],
 } as const satisfies Record<ProviderKind, ReadonlyArray<{ slug: ModelSlug; name: string }>>;
 
 async function mountPicker(props: {

@@ -18,7 +18,7 @@ import {
 const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> = {
   claudeAgent: new Set(MODEL_OPTIONS_BY_PROVIDER.claudeAgent.map((option) => option.slug)),
   codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
-  copilot: new Set<ModelSlug>(), // Copilot models are fetched dynamically from SDK
+  copilot: new Set(MODEL_OPTIONS_BY_PROVIDER.copilot.map((option) => option.slug)),
 };
 
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
@@ -180,11 +180,12 @@ export function getReasoningEffortOptions(
 }
 
 export function getDefaultReasoningEffort(provider: "codex"): CodexReasoningEffort;
+export function getDefaultReasoningEffort(provider: "copilot"): null;
 export function getDefaultReasoningEffort(provider: "claudeAgent"): ClaudeCodeEffort;
-export function getDefaultReasoningEffort(provider?: ProviderKind): ProviderReasoningEffort;
+export function getDefaultReasoningEffort(provider?: ProviderKind): ProviderReasoningEffort | null;
 export function getDefaultReasoningEffort(
   provider: ProviderKind = "codex",
-): ProviderReasoningEffort {
+): ProviderReasoningEffort | null {
   return DEFAULT_REASONING_EFFORT_BY_PROVIDER[provider];
 }
 
