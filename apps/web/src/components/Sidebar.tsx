@@ -39,6 +39,7 @@ import {
   type GitStatusResult,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import { inferProviderForModel } from "@t3tools/shared/model";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
@@ -268,7 +269,8 @@ export default function Sidebar() {
   const toggleProject = useStore((store) => store.toggleProject);
   const reorderProjects = useStore((store) => store.reorderProjects);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearThreadDraft);
-  const draftByThreadId = useComposerDraftStore((store) => store.draftsByThreadId);
+  const stickyModel = useComposerDraftStore((store) => store.stickyModel);
+  const stickyModelOptions = useComposerDraftStore((store) => store.stickyModelOptions);
   const getDraftThreadByProjectId = useComposerDraftStore(
     (store) => store.getDraftThreadByProjectId,
   );
@@ -279,6 +281,7 @@ export default function Sidebar() {
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
   const setDraftProvider = useComposerDraftStore((store) => store.setProvider);
   const setDraftModel = useComposerDraftStore((store) => store.setModel);
+  const setDraftModelOptions = useComposerDraftStore((store) => store.setModelOptions);
   const clearProjectDraftThreadId = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadId,
   );
@@ -409,25 +412,9 @@ export default function Sidebar() {
         model?: ModelSlug | null;
       },
     ): Promise<void> => {
-      const activeThread = routeThreadId
-        ? (threads.find((thread) => thread.id === routeThreadId) ?? null)
-        : null;
-      const activeDraftState = routeThreadId ? (draftByThreadId[routeThreadId] ?? null) : null;
       const activeDraftThread = routeThreadId ? getDraftThread(routeThreadId) : null;
-      const sourceProjectId = activeThread?.projectId ?? activeDraftThread?.projectId ?? null;
-      const shouldSeedFromActiveContext = sourceProjectId === projectId;
-      const nextProvider =
-        options?.provider !== undefined
-          ? (options.provider ?? null)
-          : shouldSeedFromActiveContext
-            ? (activeDraftState?.provider ?? activeThread?.session?.provider ?? null)
-            : null;
-      const nextModel =
-        options?.model !== undefined
-          ? (options.model ?? null)
-          : shouldSeedFromActiveContext
-            ? (activeDraftState?.model ?? activeThread?.model ?? null)
-            : null;
+      const nextProvider = options?.provider !== undefined ? (options.provider ?? null) : null;
+      const nextModel = options?.model !== undefined ? (options.model ?? null) : null;
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
       const hasEnvModeOption = options?.envMode !== undefined;
@@ -493,6 +480,13 @@ export default function Sidebar() {
         }
         if (hasModelOption) {
           setDraftModel(threadId, nextModel, nextProvider);
+        } else if (stickyModel) {
+          const stickyProvider = inferProviderForModel(stickyModel);
+          setDraftProvider(threadId, stickyProvider);
+          setDraftModel(threadId, stickyModel, stickyProvider);
+        }
+        if (!hasProviderOption && !hasModelOption && Object.keys(stickyModelOptions).length > 0) {
+          setDraftModelOptions(threadId, stickyModelOptions);
         }
 
         await navigate({
@@ -503,16 +497,17 @@ export default function Sidebar() {
     },
     [
       clearProjectDraftThreadId,
-      draftByThreadId,
       getDraftThreadByProjectId,
       navigate,
       getDraftThread,
       routeThreadId,
       setDraftModel,
+      setDraftModelOptions,
       setDraftThreadContext,
       setDraftProvider,
       setProjectDraftThreadId,
-      threads,
+      stickyModel,
+      stickyModelOptions,
     ],
   );
 
