@@ -27,7 +27,7 @@ export function normalizeAttachmentRelativePath(rawRelativePath: string): string
 
 export function resolveAttachmentRelativePathFrom(
   input: {
-    readonly stateDir: string;
+    readonly attachmentsDir: string;
     readonly relativePath: string;
   },
   pathApi: AttachmentPathApi,
