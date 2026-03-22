@@ -17,6 +17,9 @@ This document covers how to run desktop releases from one tag, first without sig
 - Includes Electron auto-update metadata (for example `latest*.yml` and `*.blockmap`) in release assets.
 - Publishes the CLI package (`apps/server`, npm package `t3`) with OIDC trusted publishing.
 - Signing is optional and auto-detected per platform from secrets.
+- Release finalize auth supports two modes:
+  - Preferred: GitHub App via `RELEASE_APP_ID` + `RELEASE_APP_PRIVATE_KEY` secrets.
+  - Fallback: default `github.token` + `github-actions[bot]` identity when those app secrets are not set.
 
 ## Desktop auto-update notes
 
@@ -65,6 +68,17 @@ Checklist:
    - set `apps/server/package.json` version to `X.Y.Z`
    - build web + server
    - run `bun publish --access public`
+
+## 0.1) Optional GitHub App setup for finalize pushes
+
+The `finalize` job can push the release version bump commit using either a GitHub App token or the default workflow token.
+
+- Preferred (recommended for org policy/branch protections):
+  - `RELEASE_APP_ID`
+  - `RELEASE_APP_PRIVATE_KEY`
+- If these are missing, the workflow automatically falls back to `github.token`.
+
+If your branch protections require a specific actor/app for direct pushes to `main`, configure the two GitHub App secrets above.
 
 ## 1) Dry-run release without signing
 

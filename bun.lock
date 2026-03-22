@@ -44,7 +44,7 @@
     },
     "apps/server": {
       "name": "t3",
-      "version": "0.0.1",
+      "version": "0.0.0",
       "bin": {
         "t3": "./dist/index.mjs",
       },

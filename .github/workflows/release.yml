@@ -277,6 +277,7 @@ jobs:
     steps:
       - id: app_token
         name: Mint release app token
+        if: ${{ secrets.RELEASE_APP_ID != '' && secrets.RELEASE_APP_PRIVATE_KEY != '' }}
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
@@ -288,18 +289,23 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ steps.app_token.outputs.token }}
+          token: ${{ steps.app_token.outputs.token || github.token }}
           persist-credentials: true
 
       - id: app_bot
-        name: Resolve GitHub App bot identity
+        name: Resolve commit identity
         env:
-          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token || github.token }}
           APP_SLUG: ${{ steps.app_token.outputs.app-slug }}
         run: |
-          user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
-          echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
-          echo "email=${user_id}+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+          if [[ -n "$APP_SLUG" ]]; then
+            user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+            echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
+            echo "email=${user_id}+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=github-actions[bot]" >> "$GITHUB_OUTPUT"
+            echo "email=41898282+github-actions[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
