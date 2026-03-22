@@ -39,12 +39,19 @@ import {
   type GitStatusResult,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
+import { inferProviderForModel } from "@t3tools/shared/model";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { useAppSettings } from "../appSettings";
 import { isElectron } from "../env";
 import { APP_STAGE_LABEL, APP_VERSION } from "../branding";
-import { isMacPlatform, newCommandId, newProjectId, newThreadId } from "../lib/utils";
+import {
+  isLinuxPlatform,
+  isMacPlatform,
+  newCommandId,
+  newProjectId,
+  newThreadId,
+} from "../lib/utils";
 import { useStore } from "../store";
 import { isChatNewLocalShortcut, isChatNewShortcut, shortcutLabelForCommand } from "../keybindings";
 import { derivePendingApprovals, derivePendingUserInputs } from "../session-logic";
@@ -88,6 +95,7 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
 import { isNonEmpty as isNonEmptyString } from "effect/String";
 import {
+  resolveProjectStatusIndicator,
   resolveSidebarNewThreadEnvMode,
   resolveThreadStatusPill,
   shouldClearThreadSelectionOnMouseDown,
@@ -261,7 +269,8 @@ export default function Sidebar() {
   const toggleProject = useStore((store) => store.toggleProject);
   const reorderProjects = useStore((store) => store.reorderProjects);
   const clearComposerDraftForThread = useComposerDraftStore((store) => store.clearThreadDraft);
-  const draftByThreadId = useComposerDraftStore((store) => store.draftsByThreadId);
+  const stickyModel = useComposerDraftStore((store) => store.stickyModel);
+  const stickyModelOptions = useComposerDraftStore((store) => store.stickyModelOptions);
   const getDraftThreadByProjectId = useComposerDraftStore(
     (store) => store.getDraftThreadByProjectId,
   );
@@ -272,6 +281,7 @@ export default function Sidebar() {
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
   const setDraftProvider = useComposerDraftStore((store) => store.setProvider);
   const setDraftModel = useComposerDraftStore((store) => store.setModel);
+  const setDraftModelOptions = useComposerDraftStore((store) => store.setModelOptions);
   const clearProjectDraftThreadId = useComposerDraftStore(
     (store) => store.clearProjectDraftThreadId,
   );
@@ -314,7 +324,8 @@ export default function Sidebar() {
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const removeFromSelection = useThreadSelectionStore((s) => s.removeFromSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
-  const shouldBrowseForProjectImmediately = isElectron;
+  const isLinuxDesktop = isElectron && isLinuxPlatform(navigator.platform);
+  const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop;
   const shouldShowProjectPathEntry = addingProject && !shouldBrowseForProjectImmediately;
   const projectCwdById = useMemo(
     () => new Map(projects.map((project) => [project.id, project.cwd] as const)),
@@ -401,25 +412,9 @@ export default function Sidebar() {
         model?: ModelSlug | null;
       },
     ): Promise<void> => {
-      const activeThread = routeThreadId
-        ? (threads.find((thread) => thread.id === routeThreadId) ?? null)
-        : null;
-      const activeDraftState = routeThreadId ? (draftByThreadId[routeThreadId] ?? null) : null;
       const activeDraftThread = routeThreadId ? getDraftThread(routeThreadId) : null;
-      const sourceProjectId = activeThread?.projectId ?? activeDraftThread?.projectId ?? null;
-      const shouldSeedFromActiveContext = sourceProjectId === projectId;
-      const nextProvider =
-        options?.provider !== undefined
-          ? (options.provider ?? null)
-          : shouldSeedFromActiveContext
-            ? (activeDraftState?.provider ?? activeThread?.session?.provider ?? null)
-            : null;
-      const nextModel =
-        options?.model !== undefined
-          ? (options.model ?? null)
-          : shouldSeedFromActiveContext
-            ? (activeDraftState?.model ?? activeThread?.model ?? null)
-            : null;
+      const nextProvider = options?.provider !== undefined ? (options.provider ?? null) : null;
+      const nextModel = options?.model !== undefined ? (options.model ?? null) : null;
       const hasBranchOption = options?.branch !== undefined;
       const hasWorktreePathOption = options?.worktreePath !== undefined;
       const hasEnvModeOption = options?.envMode !== undefined;
@@ -485,6 +480,13 @@ export default function Sidebar() {
         }
         if (hasModelOption) {
           setDraftModel(threadId, nextModel, nextProvider);
+        } else if (stickyModel) {
+          const stickyProvider = inferProviderForModel(stickyModel);
+          setDraftProvider(threadId, stickyProvider);
+          setDraftModel(threadId, stickyModel, stickyProvider);
+        }
+        if (!hasProviderOption && !hasModelOption && Object.keys(stickyModelOptions).length > 0) {
+          setDraftModelOptions(threadId, stickyModelOptions);
         }
 
         await navigate({
@@ -495,16 +497,17 @@ export default function Sidebar() {
     },
     [
       clearProjectDraftThreadId,
-      draftByThreadId,
       getDraftThreadByProjectId,
       navigate,
       getDraftThread,
       routeThreadId,
       setDraftModel,
+      setDraftModelOptions,
       setDraftThreadContext,
       setDraftProvider,
       setProjectDraftThreadId,
-      threads,
+      stickyModel,
+      stickyModelOptions,
     ],
   );
 
@@ -1436,9 +1439,9 @@ export default function Sidebar() {
                 render={
                   <button
                     type="button"
-                    aria-label="Add project"
+                    aria-label={shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
                     aria-pressed={shouldShowProjectPathEntry}
-                    className="inline-flex size-5 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                    className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                     onClick={handleStartAddProject}
                   />
                 }
@@ -1449,7 +1452,9 @@ export default function Sidebar() {
                   }`}
                 />
               </TooltipTrigger>
-              <TooltipPopup side="right">Add project</TooltipPopup>
+              <TooltipPopup side="right">
+                {shouldShowProjectPathEntry ? "Cancel add project" : "Add project"}
+              </TooltipPopup>
             </Tooltip>
           </div>
 
@@ -1540,13 +1545,22 @@ export default function Sidebar() {
                       if (byDate !== 0) return byDate;
                       return b.id.localeCompare(a.id);
                     });
+                  const projectStatus = resolveProjectStatusIndicator(
+                    projectThreads.map((thread) =>
+                      resolveThreadStatusPill({
+                        thread,
+                        hasPendingApprovals: derivePendingApprovals(thread.activities).length > 0,
+                        hasPendingUserInput: derivePendingUserInputs(thread.activities).length > 0,
+                      }),
+                    ),
+                  );
                   const isThreadListExpanded = expandedThreadListsByProject.has(project.id);
                   const hasHiddenThreads = projectThreads.length > THREAD_PREVIEW_LIMIT;
                   const visibleThreads =
                     hasHiddenThreads && !isThreadListExpanded
                       ? projectThreads.slice(0, THREAD_PREVIEW_LIMIT)
                       : projectThreads;
-                  const orderedProjectThreadIds = projectThreads.map((t) => t.id);
+                  const orderedProjectThreadIds = projectThreads.map((thread) => thread.id);
 
                   return (
                     <SortableProjectItem key={project.id} projectId={project.id}>
@@ -1569,11 +1583,28 @@ export default function Sidebar() {
                                 });
                               }}
                             >
-                              <ChevronRightIcon
-                                className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${
-                                  project.expanded ? "rotate-90" : ""
-                                }`}
-                              />
+                              {!project.expanded && projectStatus ? (
+                                <span
+                                  aria-hidden="true"
+                                  title={projectStatus.label}
+                                  className={`-ml-0.5 relative inline-flex size-3.5 shrink-0 items-center justify-center ${projectStatus.colorClass}`}
+                                >
+                                  <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/project-header:opacity-0">
+                                    <span
+                                      className={`size-[9px] rounded-full ${projectStatus.dotClass} ${
+                                        projectStatus.pulse ? "animate-pulse" : ""
+                                      }`}
+                                    />
+                                  </span>
+                                  <ChevronRightIcon className="absolute inset-0 m-auto size-3.5 text-muted-foreground/70 opacity-0 transition-opacity duration-150 group-hover/project-header:opacity-100" />
+                                </span>
+                              ) : (
+                                <ChevronRightIcon
+                                  className={`-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150 ${
+                                    project.expanded ? "rotate-90" : ""
+                                  }`}
+                                />
+                              )}
                               <ProjectFavicon cwd={project.cwd} />
                               <span className="flex-1 truncate text-xs font-medium text-foreground/90">
                                 {project.name}

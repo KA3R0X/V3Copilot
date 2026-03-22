@@ -189,12 +189,15 @@ function toLegacySessionStatus(
 }
 
 function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === "codex" || providerName === "copilot") {
+  if (providerName === "codex" || providerName === "copilot" || providerName === "claudeAgent") {
     return providerName;
   }
   return "codex";
 }
 
+const CLAUDE_MODEL_SLUGS = new Set<string>(
+  getModelOptions("claudeAgent").map((option) => option.slug),
+);
 const CODEX_MODEL_SLUGS = new Set<string>(getModelOptions("codex").map((option) => option.slug));
 const COPILOT_MODEL_SLUGS = new Set<string>(
   getModelOptions("copilot").map((option) => option.slug),
@@ -204,8 +207,15 @@ function inferProviderForThreadModel(input: {
   readonly model: string;
   readonly sessionProviderName: string | null;
 }): ProviderKind {
-  if (input.sessionProviderName === "codex" || input.sessionProviderName === "copilot") {
+  if (
+    input.sessionProviderName === "codex" ||
+    input.sessionProviderName === "copilot" ||
+    input.sessionProviderName === "claudeAgent"
+  ) {
     return input.sessionProviderName;
+  }
+  if (CLAUDE_MODEL_SLUGS.has(input.model.trim())) {
+    return "claudeAgent";
   }
   const normalizedCopilot = normalizeModelSlug(input.model, "copilot");
   if (normalizedCopilot && COPILOT_MODEL_SLUGS.has(normalizedCopilot)) {

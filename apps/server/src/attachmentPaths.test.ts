@@ -18,7 +18,7 @@ describe("attachmentPaths", () => {
     expect(
       resolveAttachmentRelativePathFrom(
         {
-          stateDir: "C:\\state",
+          attachmentsDir: "C:\\state\\attachments",
           relativePath: "..\\outside.png",
         },
         path.win32,
@@ -30,7 +30,7 @@ describe("attachmentPaths", () => {
     expect(
       resolveAttachmentRelativePathFrom(
         {
-          stateDir: "C:\\state",
+          attachmentsDir: "C:\\state\\attachments",
           relativePath: "thread-a\\message-a\\image.png",
         },
         path.win32,

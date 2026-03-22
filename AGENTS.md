@@ -7,7 +7,7 @@
 
 ## Project Snapshot
 
-V3 Copilot is a minimal web GUI for using code agents like Codex and Claude Code (coming soon).
+V3 Copilot is a minimal web GUI for using coding agents like Codex and Claude.
 
 This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
 

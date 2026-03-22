@@ -9,7 +9,15 @@ import {
 } from "@t3tools/contracts";
 import { CheckIcon } from "lucide-react";
 import { getModelOptions, normalizeModelSlug } from "@t3tools/shared/model";
-import { getAppModelOptions, MAX_CUSTOM_MODEL_LENGTH, useAppSettings } from "../appSettings";
+import {
+  getAppModelOptions,
+  getCustomModelsForProvider,
+  getDefaultCustomModelsForProvider,
+  MAX_CUSTOM_MODEL_LENGTH,
+  MODEL_PROVIDER_SETTINGS,
+  patchCustomModels,
+  useAppSettings,
+} from "../appSettings";
 import { resolveAndPersistPreferredEditorLaunch } from "../editorPreferences";
 import { isElectron } from "../env";
 import { useTheme } from "../hooks/useTheme";
@@ -47,22 +55,6 @@ const THEME_OPTIONS = [
   },
 ] as const;
 
-const MODEL_PROVIDER_SETTINGS: Array<{
-  provider: ProviderKind;
-  title: string;
-  description: string;
-  placeholder: string;
-  example: string;
-}> = [
-  {
-    provider: "codex",
-    title: "Codex",
-    description: "Save additional Codex model slugs for the picker and `/model` command.",
-    placeholder: "your-codex-model-slug",
-    example: "gpt-6.7-codex-ultra-preview",
-  },
-] as const;
-
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
   "12-hour": "12-hour",
@@ -79,36 +71,6 @@ function labelForEditor(editorId: EditorId): string {
   return EDITORS.find((editor) => editor.id === editorId)?.label ?? editorId;
 }
 
-function getCustomModelsForProvider(
-  settings: ReturnType<typeof useAppSettings>["settings"],
-  provider: ProviderKind,
-) {
-  switch (provider) {
-    case "codex":
-    default:
-      return settings.customCodexModels;
-  }
-}
-
-function getDefaultCustomModelsForProvider(
-  defaults: ReturnType<typeof useAppSettings>["defaults"],
-  provider: ProviderKind,
-) {
-  switch (provider) {
-    case "codex":
-    default:
-      return defaults.customCodexModels;
-  }
-}
-
-function patchCustomModels(provider: ProviderKind, models: string[]) {
-  switch (provider) {
-    case "codex":
-    default:
-      return { customCodexModels: models };
-  }
-}
-
 function SettingsRouteView() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { settings, defaults, updateSettings } = useAppSettings();
@@ -119,6 +81,7 @@ function SettingsRouteView() {
     Record<ProviderKind, string>
   >({
     codex: "",
+    claudeAgent: "",
     copilot: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
