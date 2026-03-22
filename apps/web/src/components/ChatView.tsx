@@ -1031,8 +1031,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const setComposerDraftInteractionMode = useComposerDraftStore(
     (store) => store.setInteractionMode,
   );
-  const setComposerDraftEffort = useComposerDraftStore((store) => store.setEffort);
-  const setComposerDraftCodexFastMode = useComposerDraftStore((store) => store.setCodexFastMode);
+  const setComposerDraftProviderModelOptions = useComposerDraftStore(
+    (store) => store.setProviderModelOptions,
+  );
   const addComposerDraftImage = useComposerDraftStore((store) => store.addImage);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const removeComposerDraftImage = useComposerDraftStore((store) => store.removeImage);
@@ -1364,6 +1365,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   >(
     () => ({
       codex: getModelOptions("codex"),
+      claudeAgent: getModelOptions("claudeAgent"),
       copilot:
         copilotProviderModels.length > 0
           ? orderCopilotBuiltInModelOptions(
@@ -1377,6 +1379,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => ({
       codex: getDefaultModel("codex"),
       copilot: builtInModelOptionsByProvider.copilot[0]?.slug ?? getDefaultModel("copilot"),
+      claudeAgent: getDefaultModel("claudeAgent"),
     }),
     [builtInModelOptionsByProvider],
   );
@@ -1393,7 +1396,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
           activeThread?.model ?? activeProject?.model ?? defaultModelByProvider[selectedProvider],
         );
   const customModelsForSelectedProvider =
-    selectedProvider === "copilot" ? settings.customCopilotModels : settings.customCodexModels;
+    selectedProvider === "copilot"
+      ? settings.customCopilotModels
+      : selectedProvider === "claudeAgent"
+        ? settings.customClaudeAgentModels
+        : settings.customCodexModels;
   const selectedModel = useMemo(() => {
     const draftModel = composerDraft.model;
     if (!draftModel) {
@@ -1425,12 +1432,19 @@ export default function ChatView({ threadId }: ChatViewProps) {
     selectedProvider === "codex"
       ? getDefaultReasoningEffort("codex")
       : (selectedCopilotModelMetadata?.defaultReasoningEffort ?? null);
-  const selectedEffort =
-    composerDraft.effort && reasoningOptions.includes(composerDraft.effort)
-      ? composerDraft.effort
+  const selectedEffort = (() => {
+    const options = (composerDraft.modelOptions as any)?.[selectedProvider];
+    const effort = options?.reasoningEffort ?? options?.effort;
+    return effort && (reasoningOptions as ReadonlyArray<string>).includes(effort)
+      ? effort
       : defaultReasoningEffort;
+  })();
   const selectedCodexFastModeEnabled =
-    selectedProvider === "codex" ? composerDraft.codexFastMode : false;
+    selectedProvider === "codex"
+      ? (composerDraft.modelOptions?.codex?.fastMode ?? false)
+      : selectedProvider === "claudeAgent"
+        ? (composerDraft.modelOptions?.claudeAgent?.fastMode ?? false)
+        : false;
   const selectedModelOptionsForDispatch = useMemo(() => {
     if (selectedProvider === "codex") {
       const codexOptions = {
@@ -1461,6 +1475,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       getCustomModelOptionsByProvider({
         customCodexModels: settings.customCodexModels,
         customCopilotModels: settings.customCopilotModels,
+        customClaudeAgentModels: settings.customClaudeAgentModels,
         builtInCopilotOptions: builtInModelOptionsByProvider.copilot,
       }),
     [builtInModelOptionsByProvider.copilot, settings],
@@ -3985,17 +4000,17 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const onEffortSelect = useCallback(
     (effort: CodexReasoningEffort) => {
-      setComposerDraftEffort(threadId, effort);
+      setComposerDraftProviderModelOptions(threadId, selectedProvider, { reasoningEffort: effort });
       scheduleComposerFocus();
     },
-    [scheduleComposerFocus, setComposerDraftEffort, threadId],
+    [scheduleComposerFocus, selectedProvider, setComposerDraftProviderModelOptions, threadId],
   );
   const onCodexFastModeChange = useCallback(
     (enabled: boolean) => {
-      setComposerDraftCodexFastMode(threadId, enabled);
+      setComposerDraftProviderModelOptions(threadId, "codex", { fastMode: enabled });
       scheduleComposerFocus();
     },
-    [scheduleComposerFocus, setComposerDraftCodexFastMode, threadId],
+    [scheduleComposerFocus, setComposerDraftProviderModelOptions, threadId],
   );
   const onEnvModeChange = useCallback(
     (mode: DraftThreadEnvMode) => {
@@ -6489,7 +6504,7 @@ function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): o
   label: string;
   available: true;
 } {
-  return option.available && option.value !== "claudeCode";
+  return option.available && option.value !== "claudeAgent";
 }
 
 const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption);
@@ -6502,7 +6517,7 @@ const COMING_SOON_PROVIDER_OPTIONS = [
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
   copilot: GitHubIcon,
-  claudeCode: ClaudeAI,
+  claudeAgent: ClaudeAI,
   cursor: CursorIcon,
 };
 
@@ -6792,7 +6807,7 @@ const ProviderModelPicker = memo(function ProviderModelPicker(props: {
                 aria-hidden="true"
                 className={cn(
                   "size-4 shrink-0 opacity-80",
-                  option.value === "claudeCode" ? "" : "text-muted-foreground/85",
+                  option.value === "claudeAgent" ? "" : "text-muted-foreground/85",
                 )}
               />
               <span>{option.label}</span>
